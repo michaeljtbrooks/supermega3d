@@ -42,7 +42,7 @@ The 3D platformer that doesn't care how it looks, just how it plays.
 * Moving platforms, rotating platforms, orbiting platforms
 
 ## To do:
-1) Add transfer of platform momentum you are standing on to you
+DONE) Add transfer of platform momentum you are standing on to you
 2) Static and moving traps
 3) Power-up objects
 4) Enemies with some degree of AI
