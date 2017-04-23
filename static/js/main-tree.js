@@ -4,10 +4,10 @@
  * WebGL Ball Game Client
  *
  * @author Kevin Fitzgerald / @kftzg / http://kevinfitzgerald.net
- * Git: https://github.com/kfitzgerald/webgl-ball-game
- * Last Updated: 8/22/13 9:23 AM CST
+ * @author Dr Michael Brooks / @michaeljtbrooks
+ * Last Updated: 2017-04-23 22:12 UTC 
  *
- * Copyright 2013 Kevin Fitzgerald
+ * Copyright 2013 Kevin Fitzgerald + 2017 Michael Brooks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,13 @@
  * limitations under the License.
  */
 
-
+//Add in smart print declaration of values to Vector3
+THREE.Vector3.prototype.str = function(){
+    return "x:"+this.x.toFixed(3)+", y:"+this.y.toFixed(3)+", x:"+this.z.toFixed(3);
+}
+THREE.Euler.prototype.str = function(){
+    return "x:"+this.x.toFixed(3)+", y:"+this.y.toFixed(3)+", x:"+this.z.toFixed(3);
+}
 
 
 // Set physijs's Web Worker script path
@@ -114,7 +120,7 @@ var SCREEN_WIDTH = window.innerWidth,
 
     // Flags and interactions
     loaded = false,         // true when pointer lock is enabled and animate has called once
-    pauseRotation = false,  // (pauses light rotation)
+    pauseRotation = DEBUG,  // (pauses light rotation)
     keys = [],              // array for storing which keys are up/down
     chaseCamEnabled = true, // currently only the chase cam works, free look broke
     toggleWatchers = {},    // holds what keys are pressed until they're released
@@ -155,9 +161,10 @@ var SCREEN_WIDTH = window.innerWidth,
     var POWER_STATES = { //Show what each power state gives you [standard, orange, yellow, white]
 	    "jump" : [45,50,60,70],
 	    "move" : [MOVE_SPEED*1.0, MOVE_SPEED*1.2, MOVE_SPEED*1.4, MOVE_SPEED*1.8],
-	    "shoot" : [1,2,3,4]
+	    "shoot" : [1,2,3,4],
+	    "max_gradient" : [1.0,1.3,1.6,1.9],
     }
-    var JUMP_BOOST_TIME = 0.15; //Time in seconds where you can depress space up to to boost jump speed
+    var JUMP_BOOST_TIME = 0.20; //Time in seconds where you can depress space up to to boost jump speed
 
 // *********************************************************************************************************************
 // ***** POINTER LOCK **************************************************************************************************
@@ -466,6 +473,11 @@ function init() {
     lightRig.boundRadius = 10;
     lightRig.add(light);
     lightRig.add(light2);
+    
+    //Set at noon if pauseRotation is on
+    if(pauseRotation){
+	lightRig.rotation.y = 0-(Math.PI/2); //90deg
+    }
 
     // Add the lights to the scene
     scene.add( lightRig );
@@ -916,6 +928,11 @@ function createScene(data) {
 	    "translation_mode" : "reciprocating",
 	    "magnitude" : 60
     });
+    
+    //Now a fucking steep platform:
+    var steep_platform = addPlatform(null, null, null, new THREE.Euler(-Math.PI/1.5,-Math.PI/1.5,0), false); //Really steep bastard
+    steep_platform.material.color.setHex(0xDD33CC); //Pink platform
+    
 
     //
     // TREES
@@ -993,7 +1010,8 @@ function createScene(data) {
     player.userData.nickname = nickname;
     player.userData.hp = 100.0;
     player.isJumping = false; //Not used
-    player.velocity = new THREE.Vector3(0,0,0);
+    player.velocity = new THREE.Vector3(0,0,0); //Actual velocity relative to player
+    player.standing_on_velocity = new THREE.Vector3(0,0,0); //The velocity of the last thing you stood on!
     player.power_state = 0; //Start off at nowt power
     player.jump_keydown_continuously = false; //Space is not being pressed
     // Because I decided to make Z vertical (instead of Y)
@@ -1018,6 +1036,57 @@ function createScene(data) {
     
     //Player constants:
     player.PLATFORM_GRACE = 0.15; //Units above a platform you will hover.
+    
+    
+    //Velocity management
+    /**
+     * Adjusts the player's velocity for conservation of momentum if player rotates while moving (most noticable on ice sliding)
+     * @param z_rotation_speed: The angular momentum player is rotating by
+     */
+    player.rotateVelocity = function(z_rotation_speed){
+	//Capture old velocities:
+	var old_vel = this.velocity.clone();
+	//Convert to new velocity. NB if we rotate the player clockwise, our velocities are moving ANTICLOCKWISE relatively, hence an inverse angular momentum
+	this.velocity.x = old_vel.x * Math.cos(z_rotation_speed) + old_vel.y * Math.sin(z_rotation_speed); //Rotational matrix. 
+	this.velocity.y = old_vel.y * Math.cos(z_rotation_speed) + -old_vel.x * Math.sin(z_rotation_speed); //For rotational matrices we use -(sin A)  on the second axis
+	this.velocity.z = old_vel.z; //Yep, it's simply (0,0,1) for that rotational matrix!
+    }
+    
+    
+    /**
+     * Adjusts the player's base velocity to the platform you are standing on
+     * @param platformObj: The object you are standing on
+     */
+    player.adjustStandingOnVelocity = function (platformObj){
+	//Sanity check the platform has returned its velocity (we have to be nearly in contact with it)
+	if(!platformObj){
+	    return this.standing_on_velocity.clone();
+	}
+	
+	//Check that this platform has velocity:
+	var plat_vel = platformObj.object.velocity;
+	if(typeof platformObj.object.velocity == "undefined"){ //No velocity stated
+	    plat_vel = new THREE.Vector3(0,0,0); //It has ZERO velocity.
+	} else {
+	    plat_vel = platformObj.object.velocity.clone(); //Copy to thing
+	}
+	
+	//Now we must adjust the standing on velocity to suit
+	if(!(plat_vel.x == 0 && plat_vel.y==0 && plat_vel.z ==0 )){
+	    //Rotate the velocities into terms of the character. In the end I had to do this manually ffs.
+	    this.standing_on_velocity = new THREE.Vector3();
+	    this.standing_on_velocity.x = plat_vel.x * Math.cos(this.rotation.z) + plat_vel.y * Math.sin(this.rotation.z); //Rotational matrix
+	    this.standing_on_velocity.y = plat_vel.y * Math.cos(this.rotation.z) + -plat_vel.x * Math.sin(this.rotation.z); //For rotational matrices we use -(sin A)  on the second axis
+	    this.standing_on_velocity.z = plat_vel.z; //Yep, it's simply (0,0,1) for that rotational matrix!
+	    //console.log("Plat_vel: "+plat_vel.x+","+plat_vel.y+","+plat_vel.z+"  Player vel:"+this.standing_on_velocity.x+","+this.standing_on_velocity.y+","+this.standing_on_velocity.z+" @"+this.rotation.z);
+	    //var euler_vel = plat_vel.clone().applyEuler(this.rotation); //This doesn't quite work... why??
+	    //console.log("Euler vel: "+euler_vel.x+","+euler_vel.y+","+euler_vel.z)
+	} else {
+	    this.standing_on_velocity = plat_vel;
+	}
+	return plat_vel;
+    }
+    
     
     //Now build a collision detector:
     /**
@@ -1059,7 +1128,6 @@ function createScene(data) {
     }
     player.detectCollisions = player.detectCollision; //Alias
     
-    
     /**
      * Detects when you'll collide with something if jumping or falling, so that we can arrest the Z movement by the specified amount
      * This stops you jumping and falling through platforms. It'll also ensure you "hover" just over objects rather than collide with them all the time
@@ -1095,6 +1163,7 @@ function createScene(data) {
 	//Create rays which start at each vertex, then head off downwards or upwards
 	var vertex_collisions = [];
 	var all_floor_properties = []; //Contains the restitution and friction for the floor you are standing on
+	var collided_with_objects = []; //The object you are colliding with
 	for(var rayIndex=0; rayIndex < zVertices.length; rayIndex++){ //Only need to test four rays! 
 	    var local_vertex = zVertices[rayIndex].clone(); //Grab the vertex
 	    var global_vertex = local_vertex.applyMatrix4(this.matrixWorld); //Turn into global position
@@ -1105,9 +1174,11 @@ function createScene(data) {
 		var collided_with = collisionResults[0];
 		var ray_distance = collided_with.distance; //The closest point on the ray from origin which hit the object
 		vertex_collisions.push(ray_distance);
+		collided_with_objects.push(collided_with);
 		all_floor_properties.push(collided_with.object.material._physijs); //Allows us to get the friction and restitution of the object! ##HERE##
 	    } else { //No collisions of ray with objects / ground
 		vertex_collisions.push(Infinity);
+		collided_with_objects.push(null);
 		all_floor_properties.push({ //Air effectively!
 		    "friction":0,
 		    "restitution":0,
@@ -1134,7 +1205,12 @@ function createScene(data) {
 	
 	
 	//Use the closest to touching floor item to deduce friction:
-	var floor_properties = all_floor_properties[shortest_vertex_index]
+	var floor_properties = all_floor_properties[shortest_vertex_index];
+	var standing_on = null; //Default to not standing on stuff
+	if(player.velocity.z<=0 && Math.abs(shortest_dist) < 2*player.PLATFORM_GRACE){ //Just fallen and now standing on something
+	    standing_on = collided_with_objects[shortest_vertex_index]; //Resolve what you are standing on
+	    //console.log(standing_on);
+	}
 	    
 	
 	return {
@@ -1146,6 +1222,7 @@ function createScene(data) {
 	    "vertices" : zVertices,
 	    "vertices_names" : vertex_names,
 	    "floor_properties" : floor_properties,
+	    "standing_on" : standing_on
 	}
     }
     
@@ -1205,7 +1282,7 @@ function createScene(data) {
     }
 
 
-    // Bind handler to detect collisions with own balls
+    // Bind handler to detect collisions with own balls -- Doesn't work for detecting collision between player and obstacles
     player.addEventListener( 'collision', function( other_object, relative_velocity, relative_rotation, contact_normal ) {
         // FYI, `this` has collided with `other_object` with an impact speed of `relative_velocity` and a rotational force of `relative_rotation` and at normal `contact_normal`
 	console.log("Collision detected by PhysiJS");
@@ -1275,6 +1352,9 @@ function createScene(data) {
     player.position.y = data.player.start_pos.y;
 
         
+    //Start on power 0:
+    player.setPower(0);
+    
     // Lock the player to the ground
     initPlayerZ();
 
@@ -1438,7 +1518,7 @@ function animate(delta) {
             if((player.velocity.z < 0.5) && (player.velocity.z > -0.5) && !player.isJumping){ //You can only launch off 
                 player.isJumping = true;
                 player.jump_keydown_continuously = JUMP_BOOST_TIME; //Max duration of keypress in seconds
-                player.velocity.z = 0.25*POWER_STATES.jump[player.power_state];
+                player.velocity.z = 0.10*POWER_STATES.jump[player.power_state];
                 console.log("JUMP!");
                 console.log(player);
             }
@@ -1447,7 +1527,7 @@ function animate(delta) {
         	if(z_time_factor > player.jump_keydown_continuously){
         	    z_time_factor = player.jump_keydown_continuously;
         	}
-        	player.velocity.z = player.velocity.z + (z_time_factor/JUMP_BOOST_TIME)*0.75*POWER_STATES.jump[player.power_state]; //Increment jump by up to 20% if key held by the 0.15s
+        	player.velocity.z = player.velocity.z + (z_time_factor/JUMP_BOOST_TIME)*0.80*POWER_STATES.jump[player.power_state]; //Increment jump by up to 20% if key held by the 0.15s
         	player.jump_keydown_continuously -= z_time_factor;
             }
         }
@@ -1460,6 +1540,7 @@ function animate(delta) {
             player.position.x = 0;
             player.position.y = 0;
             player.position.z = 60;
+            player.standing_on_velocity = new THREE.Vector3(0,0,0);
         }
         
         if(isKeyDown(KEYCODE['1'])){ //Artificial power up
@@ -1537,7 +1618,6 @@ function animate(delta) {
     for(var k=0; k < moving_entities.length; k++){
 	var item = moving_entities[k];
 	item.animate(delta); //Call the method on the entity
-	console.log(item.position);
     }
     
     
@@ -1653,7 +1733,11 @@ function onMouseMove(e) {
     x = Math.max(x, 0.5);
 
     // Rotate the camera based on any horizontal movement (easy)
+    //var p_rot_before = player.rotation.clone();
     player.rotateOnAxis( new THREE.Vector3(0,0,1), playerHorizontalAngleSpeed );
+    //var p_rot_after = player.rotation.clone();
+    //console.log(p_rot_before.str() + " > " + playerHorizontalAngleSpeed + " > " + p_rot_after.str());
+    player.rotateVelocity(playerHorizontalAngleSpeed);
 
     // Update camera position for vertical adjustments
     camera.position.set(camera.position.x, x, y);
@@ -2291,11 +2375,12 @@ function addTree(x, y, z, rotation) {
  * @param y - 2d Y location, or none for random
  * @param z - 3d Z location, or non for random
  * @param rotation - Optional Rotation to apply to the tree (if none given, rotation will be random)
+ * @param ice - <boolean> false for normal platform, true for ice
  */
-function addPlatform(x, y, z, rotation) {
+function addPlatform(x, y, z, rotation, ice) {
 
     //See if this platform is made of ice:
-    var is_ice = (4 == Math.floor(Math.random() * 5));
+    var is_ice = ice != null ? ice : (4 == Math.floor(Math.random() * 5)); //If ice not specified, then it is
     
     // 3rd dimension to drop the tree
     var xPos = null;
@@ -2330,13 +2415,6 @@ function addPlatform(x, y, z, rotation) {
         zPos = z;
     }
 
-    // Create a new tree mesh from the stored geometry and materials loaded from the JSON model
-    // Notice this is a non-physics-enabled mesh - this mesh will be added to a physics-enabled parent later)
-    var tree = new THREE.Mesh( treeGeo, treeMats );
-
-    // Trees should cast and receive shadows
-    tree.castShadow = true;
-    tree.receiveShadow = true;
 
     // Create Container and hit box geometries
     
@@ -2368,7 +2446,10 @@ function addPlatform(x, y, z, rotation) {
             0 //Massless i.e. fixed
         );
 
-
+    
+    //Ensure a floating platform starts with no velocity:
+    platformObj.velocity = new THREE.Vector3(0,0,0);
+    
     // Assign physics collision type and masks to both hit boxes so only specific collisions apply (currently the same as trees)
     platformObj._physijs.collision_type = CollisionTypes.TREE;
     platformObj._physijs.collision_masks = CollisionMasks.TREE;
@@ -2377,12 +2458,21 @@ function addPlatform(x, y, z, rotation) {
     platformObj.position = new THREE.Vector3(xPos, yPos, zPos);
     
     // Apply the rotation
-    var z_rotation_amt = rotation != null ? rotation : Math.random() * Math.PI;
-    platformObj.rotation.z = z_rotation_amt; //remaining gravity flat
-    var x_rotation_amt = rotation != null ? rotation : (Math.random()-0.5) * 0.2 * Math.PI; //Tilt 
-    platformObj.rotation.x = x_rotation_amt; //remaining gravity flat
-    var y_rotation_amt = rotation != null ? rotation : (Math.random()-0.5) * 0.2 * Math.PI;
-    platformObj.rotation.y = y_rotation_amt; //remaining gravity flat
+    if(rotation!=null){
+	platformObj.rotation.x = rotation.x;
+	platformObj.rotation.y = rotation.y;
+	platformObj.rotation.z = rotation.z;
+	console.log("Platform rotation provided: "+rotation.str());
+    } else {
+	var x_rotation_amt = (Math.random()-0.5) * 0.2 * Math.PI; //Tilt 
+	platformObj.rotation.x = x_rotation_amt; //remaining gravity flat
+	var y_rotation_amt = (Math.random()-0.5) * 0.2 * Math.PI;
+	platformObj.rotation.y = y_rotation_amt; //remaining gravity flat
+	var z_rotation_amt = Math.random() * Math.PI;
+	platformObj.rotation.z = z_rotation_amt; //remaining gravity flat
+	console.log("Platform rotation randomised: "+platformObj.rotation.str());
+    }
+    
     
 
     // Add the complete tree to the scene
@@ -2419,7 +2509,7 @@ function addMovingPlatform(options) {
     };
     
     if(!final_options.object){ //Create a default platform out of PhysiJS
-	var platformGeo = new THREE.CubeGeometry(5,5,1); //We're using an older version of Three.js here!
+	var platformGeo = new THREE.CubeGeometry(10,10,1); //We're using an older version of Three.js here!
 	var platformMat = Physijs.createMaterial(
                 new THREE.MeshPhongMaterial( {
                     color: 0xAA8833
@@ -2466,7 +2556,7 @@ function addMovingPlatform(options) {
 	        }
 
 	        zPos = c[0].point.z;
-	        zPos = zPos + Math.random() * 25; //Now randomise the height above ground a bit
+	        zPos = zPos + Math.random() * 20; //Now randomise the height above ground a bit
 	    } else {
 	        zPos = z;
 	    }
@@ -2489,7 +2579,7 @@ function addMovingPlatform(options) {
     
     //Create watchers:
     platformObj.amount_moved = new THREE.Vector3(0,0,0);
-    platformObj.velocity = new THREE.Vector3(0,0,0);
+    platformObj.velocity = new THREE.Vector3(0,0,0); //will be relative to the MAP not to the Player!!
     platformObj.origin = platformObj.position.clone(); //Where we started (or orbit around!)
     platformObj.rotation_matrix = new THREE.Matrix4(); //Necessary to do axis rotations
     
@@ -2499,11 +2589,13 @@ function addMovingPlatform(options) {
      * @param delta: The number of seconds between frames
      */
     platformObj.animate = function(delta){
+	//Save current position:
+	var pos_before = this.position.clone();
 	//Angular_momentum applies to rotation on axis
 	this.rotateX(this.angular_momentum.x * delta);
 	this.rotateY(this.angular_momentum.y * delta);
 	this.rotateZ(this.angular_momentum.z * delta);
-	console.log(this.rotation);
+	
 	//Translation along path
 	var tx = this.translation.x*delta;
 	var ty = this.translation.y*delta;
@@ -2525,8 +2617,6 @@ function addMovingPlatform(options) {
 		     this.amount_moved = new THREE.Vector3(0,0,0); //Reset our counter:
 		 }
 	    }
-	    //Ensure we can get at the velocity!
-	    this.velocity = this.translation;
 	} else if (this.translation_mode == "orbiting" || this.translation_mode == "orbit") {
 	    //Now things get exciting!!! We are ORBITING AROUND the original position. Translation means the rate of progression round the orbit in radians
 	    //If you only set one axis translation, it'll oscillate, if you set two it'll orbit in a plane, if you set three, it'll corkscrew orbit
@@ -2537,6 +2627,10 @@ function addMovingPlatform(options) {
 	    this.position.y = this.magnitude * Math.sin(this.amount_moved.y+Math.PI/2) + this.origin.y; //90 degree out of phase
 	    this.position.z = this.magnitude * Math.sin(this.amount_moved.z+Math.PI/2) + this.origin.z; //90 degree out of phase too
 	}
+	//Calculate velocity:
+	this.velocity.x = (this.position.x - pos_before.x)/delta;
+	this.velocity.y = (this.position.y - pos_before.y)/delta;
+	this.velocity.z = (this.position.z - pos_before.z)/delta;
 	
 	//Update position for physijs;
 	this.__dirtyPosition = true;
@@ -2631,6 +2725,7 @@ function jumpingOrFallingPlayerZ(specificPlayer) {
         	p.velocity.z = 0; //Stop falling
         	p.isJumping = false;
         	p.standing = true;
+        	p.standing_on_velocity = new THREE.Vector3(0,0,0); //The ground is static
             }
         }
 
@@ -3175,6 +3270,10 @@ function moveIfInBounds2(delta, specificPlayer){
     	y_collide = "",
     	z_collide = "";
     
+    //When it comes to the flat plane, maximum gradients apply:
+    var max_grad = POWER_STATES.max_gradient[p.power_state]; //The max gradient you can tolerate depends on your power!
+	
+    
     //Move player to new position:
     p.hasMoved = false;
     if(p.mass==0){ //Use Mike's fudged translations
@@ -3183,7 +3282,9 @@ function moveIfInBounds2(delta, specificPlayer){
 	//UP/DOWN: Z - First deal with the more complex up/down direction
         oldPos = p.position.clone() //We need to update this with every movement
         p.standing = false;
-        to_move = p.velocity.z*delta;
+        var x_move_slipping = 0;
+        var y_move_slipping = 0;
+        to_move = (p.velocity.z + p.standing_on_velocity.z)*delta; //Standing_on_velocity is the platform velocity you are on
         //Use the upwards and downwards rays to see if you are going to hit something between frames, and stop short of it
         var dist_to_hit = p.zCollisionPrediction(); //Determine when we're gonna hit something. dist_to_hit.shortest is infinity if no collision imminent
         if(p.velocity.z>0){ //Jumping
@@ -3195,16 +3296,30 @@ function moveIfInBounds2(delta, specificPlayer){
             }//Z
         } else { //Falling or walking
             if(-to_move > (dist_to_hit.shortest - p.PLATFORM_GRACE)){ //You're gonna land on your feet (NB to_move is vector, dist_to_hit is scalar!)
+        	//LANDING ON A PLATFORM
         	to_move = -1 * (dist_to_hit.shortest - p.PLATFORM_GRACE); //Stop just a smidgen before your feet touch the platform
-        	p.velocity.z = 0; //Set velocity to zero
         	p.standing=true;
         	p.isJumping = false;
         	player.jump_keydown_continuously = false; //Null off the persistent space press
             }// Z
             if(dist_to_hit <= p.PLATFORM_GRACE){ //The definition of standing is if you are perched at the grace distance above a platform
+        	//STANDING ON A PLATFORM
         	p.standing = true;
+        	//p.adjustStandingOnVelocity(dist_to_hit.standing_on); //Adjust our standing velocity
         	p.isJumping = false;
             }
+            //SLIPPING CODE: Now, check to see if our gradient is actually safe:
+            if(p.standing && (Math.abs(dist_to_hit.x_gradient) > max_grad || Math.abs(dist_to_hit.y_gradient) > max_grad) ){ //Sorry, you're just too slippy!
+        	//if(Math.abs(dist_to_hit.x_gradient) > 0 && Math.abs(dist_to_hit.x_gradient) < 100 && !isNaN(dist_to_hit.x_gradient)){var x_move_slipping = to_move * dist_to_hit.x_gradient;}
+        	//if(Math.abs(dist_to_hit.y_gradient) > 0 && Math.abs(dist_to_hit.y_gradient) < 100 && !isNaN(dist_to_hit.y_gradient)){var y_move_slipping = to_move * dist_to_hit.y_gradient;}
+        	//console.log(dist_to_hit.x_gradient+"/"+dist_to_hit.y_gradient);
+        	p.standing = false; //This will just boost the z velocity,
+            } else if(p.standing) { //We've hit a platform, Gradient is ok, so we can arrest the fall on this platform
+        	//LANDING ON A PLATFORM which is not too steep
+        	p.velocity.z = 0; //Set velocity to zero
+        	p.adjustStandingOnVelocity(dist_to_hit.standing_on); //Adjust our standing velocity to match the platform if the platform is moving
+            }
+            console.log(dist_to_hit.x_gradient+"/"+dist_to_hit.y_gradient+" max:"+max_grad);
         }
         p.translateZ(to_move); //Jumping (+) / falling (-)
         //var collision = playerTouchingObjs(p); //Checks collision against non-ground objects
@@ -3218,13 +3333,16 @@ function moveIfInBounds2(delta, specificPlayer){
         }else{
             p.hasMoved=true;
         }// Z
-	
+        
 	//LEFT/RIGHT: X, did they collide?
 	oldPos = p.position.clone() //We need to update this with every movement
-	to_move = p.velocity.x*delta;
+	to_move = (p.velocity.x + p.standing_on_velocity.x)*delta + x_move_slipping; //Player_velocity + platform_velocity + velocity from slope slippage
 	z_grad_move = 0; //Default to nil movement
-	if(dist_to_hit.x_gradient > -10 && dist_to_hit.x_gradient < 10){ //We have a legit gradient here
-	    z_grad_move = to_move * dist_to_hit.x_gradient;
+	if(dist_to_hit.x_gradient > -3 && dist_to_hit.x_gradient < 3){ //We have a legit gradient here
+	    if(Math.abs(dist_to_hit.x_gradient) >= max_grad){ //Too steep, SLIDE!!
+		p.standing=false;
+	    }
+	    z_grad_move = to_move * dist_to_hit.x_gradient; 
 	}
 	p.translateX(to_move); //Principle movement
 	p.translateZ(z_grad_move); //adjustment for gradient
@@ -3241,9 +3359,12 @@ function moveIfInBounds2(delta, specificPlayer){
         
         //Now Y (forwards, backwards)
         oldPos = p.position.clone() //We need to update this with every movement
-        to_move = p.velocity.y*delta;
+        to_move = (p.velocity.y + p.standing_on_velocity.y)*delta + y_move_slipping;
         z_grad_move = 0; //Default to nil movement
-	if(dist_to_hit.y_gradient > -10 && dist_to_hit.y_gradient < 10){ //We have a legit gradient here
+	if(dist_to_hit.y_gradient > -3 && dist_to_hit.y_gradient < 3){ //We have a legit gradient here
+	    if(Math.abs(dist_to_hit.y_gradient) >= max_grad){ //Too steep, SLIDE!!
+		p.standing=false;
+	    }
 	    z_grad_move = to_move * dist_to_hit.y_gradient;
 	}
         p.translateY(to_move); //Forwards (-), Backwards (+)
@@ -3281,11 +3402,13 @@ function moveIfInBounds2(delta, specificPlayer){
     if (!isBetween(p.position.x, -width, width) ||
         !isBetween(p.position.y, -depth, depth)) {
         // Revert and report movement failure
+        p.standing_on_velocity = new THREE.Vector3(0,0,0); //Null movement
+	p.velocity.x = 0;
+	p.velocity.y = 0;
         p.position.x = preMovePos.x;
         p.position.y = preMovePos.y;
-        p.velocity.z = 0;
+        //p.velocity.z = 0;
         p.hasMoved = false;
-        return p
     }
     //Update physi.js
     p.__dirtyPosition = true;
@@ -3303,8 +3426,9 @@ function moveIfInBounds2(delta, specificPlayer){
     		mu = 0.5;
         }
     }
-    p.velocity.x -= p.velocity.x * 20.0 * mu * delta;
-    p.velocity.y -= p.velocity.y * 20.0 * mu * delta;
+    //Perform self-initiated velocity decay
+    p.velocity.x = p.velocity.x - (p.velocity.x * 20.0 * mu * delta);
+    p.velocity.y = p.velocity.y - (p.velocity.y * 20.0 * mu * delta);
 
     //Gravity!! - only if not standing
     if(!p.standing){
@@ -3315,10 +3439,10 @@ function moveIfInBounds2(delta, specificPlayer){
     
     //Debug stats:
     var collisiondata = "Clip X:"+x_collide+", Y:"+y_collide+", Z:"+z_collide+""
-    var playerstats = "Player rot: "+p.rotation.x.toFixed(2)+","+p.rotation.y.toFixed(2)+","+p.rotation.z.toFixed(2);
+    var playerrot = "Player rot: "+p.rotation.x.toFixed(2)+","+p.rotation.y.toFixed(2)+","+p.rotation.z.toFixed(2)+"("+(p.rotation.z*(180/Math.PI)).toFixed(1)+")";
     var playerpos = "Player pos: "+p.position.x.toFixed(2)+","+p.position.y.toFixed(2)+","+p.position.z.toFixed(2);
     var playervel = "Player vel: "+p.velocity.x.toFixed(2)+","+p.velocity.y.toFixed(2)+","+p.velocity.z.toFixed(2);
-    $('#debug-stats').html(collisiondata+"<br/>"+playerstats+"<br/><br/>"+playerpos+"<br/>"+playervel+"<br/>µ:"+mu);
+    $('#debug-stats').html(collisiondata+"<br/>"+playerrot+"<br/><br/>"+playerpos+"<br/>"+playervel+"<br/>µ:"+mu+", PlatformVel: "+p.standing_on_velocity.x+","+p.standing_on_velocity.y+","+p.standing_on_velocity.z);
     
     //Return the friction so the rest of our engine can use it.
     return mu;
