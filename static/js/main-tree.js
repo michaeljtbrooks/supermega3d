@@ -26,6 +26,20 @@
 THREE.Vector3.prototype.str = function(){
     return "x:"+this.x.toFixed(3)+", y:"+this.y.toFixed(3)+", x:"+this.z.toFixed(3);
 }
+
+/**
+ * Applies a rotation to a vector in the Z axis to give that vector in terms of the rotated object
+ * @param a: <radians> the amount our Z axis has rotated by
+ * @return: <THREE.Vector3> with the new values
+ */
+THREE.Vector3.prototype.applyZRotation3 = function(a){
+    var out_vector = new THREE.Vector3();
+    out_vector.x = this.x * Math.cos(a) + this.y * Math.sin(a); //Rotational matrix
+    out_vector.y = this.y * Math.cos(a) + -this.x * Math.sin(a); //For rotational matrices we use -(sin A)  on the second axis
+    out_vector.z = this.z; //Yep, it's simply (0,0,1) for that rotational matrix!
+    return out_vector;
+}
+
 THREE.Euler.prototype.str = function(){
     return "x:"+this.x.toFixed(3)+", y:"+this.y.toFixed(3)+", x:"+this.z.toFixed(3);
 }
@@ -165,6 +179,8 @@ var SCREEN_WIDTH = window.innerWidth,
 	    "max_gradient" : [1.0,1.3,1.6,1.9],
     }
     var JUMP_BOOST_TIME = 0.20; //Time in seconds where you can depress space up to to boost jump speed
+    
+    var debug_rays = {}; //See where our rays are pointing
 
 // *********************************************************************************************************************
 // ***** POINTER LOCK **************************************************************************************************
@@ -933,6 +949,13 @@ function createScene(data) {
     var steep_platform = addPlatform(null, null, null, new THREE.Euler(-Math.PI/1.5,-Math.PI/1.5,0), false); //Really steep bastard
     steep_platform.material.color.setHex(0xDD33CC); //Pink platform
     
+    //Now a huuuuge fucker to test our motions
+    addMovingPlatform({
+	"translation" : new THREE.Vector3(20,20,0),
+	"translation_mode" : "reciprocating",
+	"magnitude" : 60,
+	"size" : [30,30,100]
+    });
 
     //
     // TREES
@@ -1027,11 +1050,47 @@ function createScene(data) {
     for (var vertexIndex = 0; vertexIndex < player.geometry.vertices.length; vertexIndex++){
 	player.ray_dirvectors.push(player.geometry.vertices[vertexIndex]); //Add the rays off to the vertices
     }
+    //Index numbers:       0	    1       2        3       4       5           6              7                8                 9                  10               11                12              13
+    //z axis perpendicular
     player.ray_names = ["bottom", "top", "front", "back", "left", "right", "leftbacktop", "leftbackbottom","leftfronttop","leftfrontbottom", "rightbackbottom", "rightbacktop", "rightfrontbottom", "rightfronttop"]; //Let's hope the THREE vertex order never changes!!
     player.bottom_vertices = [player.ray_dirvectors[7], player.ray_dirvectors[9], player.ray_dirvectors[10], player.ray_dirvectors[12]]; //Store our vectors with "bottom" in them
     player.bottom_vertices_names = [player.ray_names[7], player.ray_names[9], player.ray_names[10], player.ray_names[12]];
     player.top_vertices = [player.ray_dirvectors[6], player.ray_dirvectors[8], player.ray_dirvectors[11], player.ray_dirvectors[13]]; //Store our vectors with "top" in them
     player.top_vertices_names = [player.ray_names[6], player.ray_names[8], player.ray_names[11], player.ray_names[13]];
+    
+    //x axis perpendicular
+    player.left_vertices = [player.ray_dirvectors[4], player.ray_dirvectors[6], player.ray_dirvectors[7], player.ray_dirvectors[8], player.ray_dirvectors[9]]; //Store our vectors with "left" in them, INCLUDING THE CENTRAL VECTOR (it's a large face!)
+    player.left_vertices_names = [player.ray_names[4], player.ray_names[6], player.ray_names[7], player.ray_names[8], player.ray_names[9]];
+    player.right_vertices = [player.ray_dirvectors[5], player.ray_dirvectors[10], player.ray_dirvectors[11], player.ray_dirvectors[12], player.ray_dirvectors[13]]; //Store our vectors with "top" in them
+    player.right_vertices_names = [player.ray_names[5], player.ray_names[10], player.ray_names[11], player.ray_names[12], player.ray_names[13]];
+    
+    //y axis perpendicular
+    player.front_vertices = [player.ray_dirvectors[2], player.ray_dirvectors[8], player.ray_dirvectors[9], player.ray_dirvectors[12], player.ray_dirvectors[13]]; //Store our vectors with "front" in them, INCLUDING THE CENTRAL VECTOR (it's a large face!)
+    player.front_vertices_names = [player.ray_names[2], player.ray_names[8], player.ray_names[9], player.ray_names[12], player.ray_names[13]];
+    player.back_vertices = [player.ray_dirvectors[3], player.ray_dirvectors[6], player.ray_dirvectors[7], player.ray_dirvectors[10], player.ray_dirvectors[11]]; //Store our vectors with "back" in them
+    player.back_vertices_names = [player.ray_names[3], player.ray_names[6], player.ray_names[7], player.ray_names[10], player.ray_names[11]];
+    
+    //Organise into dict:
+    player.flat_plane_points = {
+	"x" : player.left_vertices,
+	"-x" : player.right_vertices,
+	"y" : player.back_vertices,
+	"-y" : player.front_vertices
+    }
+    player.flat_plane_points_names = {
+	"x" : player.left_vertices_names,
+	"-x" : player.right_vertices_names,
+	"y" : player.back_vertices_names,
+	"-y" : player.front_vertices_names
+    }
+    player.flat_plane_points_directions = {
+	"x" : new THREE.Vector3(1,0,0),
+	"-x" : new THREE.Vector3(-1,0,0),
+	"y" : new THREE.Vector3(0,1,0),
+	"-y" : new THREE.Vector3(0,-1,0)
+    }
+	    
+    
     player.caster = new THREE.Raycaster(); //Use one raycaster, save memory!
     
     //Player constants:
@@ -1074,10 +1133,12 @@ function createScene(data) {
 	//Now we must adjust the standing on velocity to suit
 	if(!(plat_vel.x == 0 && plat_vel.y==0 && plat_vel.z ==0 )){
 	    //Rotate the velocities into terms of the character. In the end I had to do this manually ffs.
-	    this.standing_on_velocity = new THREE.Vector3();
-	    this.standing_on_velocity.x = plat_vel.x * Math.cos(this.rotation.z) + plat_vel.y * Math.sin(this.rotation.z); //Rotational matrix
-	    this.standing_on_velocity.y = plat_vel.y * Math.cos(this.rotation.z) + -plat_vel.x * Math.sin(this.rotation.z); //For rotational matrices we use -(sin A)  on the second axis
-	    this.standing_on_velocity.z = plat_vel.z; //Yep, it's simply (0,0,1) for that rotational matrix!
+	    //this.standing_on_velocity = new THREE.Vector3();
+	    //this.standing_on_velocity.x = plat_vel.x * Math.cos(this.rotation.z) + plat_vel.y * Math.sin(this.rotation.z); //Rotational matrix
+	    //this.standing_on_velocity.y = plat_vel.y * Math.cos(this.rotation.z) + -plat_vel.x * Math.sin(this.rotation.z); //For rotational matrices we use -(sin A)  on the second axis
+	    //this.standing_on_velocity.z = plat_vel.z; //Yep, it's simply (0,0,1) for that rotational matrix!
+	    //Test our new function:
+	    this.standing_on_velocity = plat_vel.applyZRotation3(this.rotation.z); //My own function which does the above
 	    //console.log("Plat_vel: "+plat_vel.x+","+plat_vel.y+","+plat_vel.z+"  Player vel:"+this.standing_on_velocity.x+","+this.standing_on_velocity.y+","+this.standing_on_velocity.z+" @"+this.rotation.z);
 	    //var euler_vel = plat_vel.clone().applyEuler(this.rotation); //This doesn't quite work... why??
 	    //console.log("Euler vel: "+euler_vel.x+","+euler_vel.y+","+euler_vel.z)
@@ -1226,6 +1287,81 @@ function createScene(data) {
 	}
     }
     
+    
+    /**
+     * Detects collisions that are about to happen in the x and y direction.
+     * This allows you to detect when you're about to get shoved by a moving platform
+     * 
+     * @return: {
+     * 		"x" : [<collision_object>,<collision_object>,], //Collisions to the LEFT
+     * 		"-x" : [<collision_object>,<collision_object>,], //Collisions to the RIGHT
+     * 		"x" : [<collision_object>,<collision_object>,], //Collisions to the RIGHT
+     * }
+     * 
+     */
+    player.quickCollisionPrediction = function(otherObjs){
+	//Sanitise inputs
+	var target_objects = otherObjs || all_collidables ; //Default to our all_trees obstacle collection
+	var origin_point = this.position.clone();
+	
+	//Prepare outputs
+	var collisions = {};
+	
+	//Do the ray loop
+	for(var k in this.flat_plane_points){
+	    collisions[k] = []; //Prepare the output
+	    var axis_points = this.flat_plane_points[k];
+	    var axis_points_names = this.flat_plane_points_names[k];
+	    var direction_player = this.flat_plane_points_directions[k];
+	    
+	    for(var rayIndex=0; rayIndex < axis_points.length; rayIndex++){
+		var local_point = axis_points[rayIndex].clone(); //Grab the point on the surface of the player
+		var global_point = local_point.applyMatrix4(this.matrixWorld); //Turn into global position
+		var direction = direction_player.applyZRotation3(-this.rotation.z);
+		this.caster.set(global_point, direction.clone().normalize()); //Set a ray with appropriate direction
+		if(DEBUG){
+		    drawRay(String(rayIndex)+k, global_point, direction.clone().normalize());
+		}
+		
+		//Check for collisions
+		var collisionResults = this.caster.intersectObjects(target_objects); //See what the outgoing rays hit
+		if ( collisionResults.length > 0 ) { //Means this ray collided, unsurprising given its infinite length!!
+		    var collided_with = collisionResults[0]; //Each collision result contains: { distance, point, face, faceIndex, indices, object }
+		    if(collided_with.distance <= this.PLATFORM_GRACE*5){ //Get close enough, that counts as a collision!
+			//Now we monkey-patch a property onto the collision_result object to see if the item was moving relative to you:
+			var object = collided_with.object;
+			var object_velocity = object.velocity;
+			// A collision occurs when:
+			//		ray_direction.x * (player.velocity.x - rot(platform_velocity.x)) > 0		//In which case, set player.velocity.x = rot(platform_velocity.x)
+			// or..		ray_direction.y * (player.velocity.y - rot(platform_velocity.y)) > 0		//In which case, set player.velocity.y = rot(platform_velocity.y)
+			if(object_velocity){
+			    console.log("Object velocity: "+object_velocity.str());
+			    var object_velocity_rel_player = object_velocity.applyZRotation3(this.rotation.z); 	//Convert the platform's velocity into the player's axis (it'll copy it for us)
+			    console.log("Rotated object velocity: "+object_velocity_rel_player.str());
+			} else {
+			    var object_velocity_rel_player = 0;
+			}
+			var x_axis_collision = direction_player.x * (player.velocity.x - object_velocity_rel_player.x); 
+			if(x_axis_collision > 0){ //That's a collision in the x axis
+			    player.velocity.x = object_velocity_rel_player.x;
+			    //player.standing_on_velocity.x = object_velocity_rel_player.x;
+			}
+			var y_axis_collision = direction_player.y * (player.velocity.y - object_velocity_rel_player.y)
+			if(y_axis_collision > 0){ //That's a collision in the x axis
+			    player.velocity.y = object_velocity_rel_player.y;
+			    //player.standing_on_velocity.y = object_velocity_rel_player.y;
+			}
+			console.log("X hit: "+x_axis_collision+", Y hit: "+y_axis_collision);
+			collisions[k].push(collided_with); //Add this into our collision dict 
+			debugger;
+		    }
+		}
+	    }
+	}
+	
+	return collisions;
+    }
+
     /**
      * Sets the player's power level to pow
      * 
@@ -1738,6 +1874,7 @@ function onMouseMove(e) {
     //var p_rot_after = player.rotation.clone();
     //console.log(p_rot_before.str() + " > " + playerHorizontalAngleSpeed + " > " + p_rot_after.str());
     player.rotateVelocity(playerHorizontalAngleSpeed);
+    removeRays();
 
     // Update camera position for vertical adjustments
     camera.position.set(camera.position.x, x, y);
@@ -2494,7 +2631,11 @@ function addPlatform(x, y, z, rotation, ice) {
  * @param translation: <THREE.Vector3> the translational movement of the object (units per second)
  * @param rotation_mode: <str> "oscillating" | "continuous"
  * @param translation_mode: <str> "oscillating" | "continuous" | "orbiting"
- * @param magnitude: <float> how long a path is (in units), or how wide (radius) an orbiting path 
+ * @param magnitude: <float> how long a path is (in units), or how wide (radius) an orbiting path
+ * @param size: <[array]> Array of sizes x,y,z to make the object
+ * @param color: <Hex colour> The colour you wish to set it as
+ * @param friction: <float> how much friction the platform should have
+ * @param restitution: <float> how stiff it should be on collisions
  */
 function addMovingPlatform(options) {
     var final_options = {
@@ -2506,16 +2647,20 @@ function addMovingPlatform(options) {
 	    "rotation_mode" : options.rotation_mode || "continuous",
 	    "translation_mode" : options.translation_mode || "reciprocating",
 	    "magnitude" : options.magnitude || 0,
+	    "size" : options.size || [10,10,1],
+	    "color" : options.color || 0xAA8833,
+	    "friction" : options.friction || .5,
+	    "restitution" : options.friction || .4
     };
     
     if(!final_options.object){ //Create a default platform out of PhysiJS
-	var platformGeo = new THREE.CubeGeometry(10,10,1); //We're using an older version of Three.js here!
+	var platformGeo = new THREE.CubeGeometry(final_options.size[0],final_options.size[1],final_options.size[2]); //We're using an older version of Three.js here!
 	var platformMat = Physijs.createMaterial(
                 new THREE.MeshPhongMaterial( {
-                    color: 0xAA8833
+                    color: final_options.color
                 }),
-                .5, // moderate friction
-                .4 // low restitution
+                final_options.friction, // moderate friction
+                final_options.restitution // low restitution
         );
         var platformObj = new Physijs.BoxMesh(
             platformGeo,
@@ -2968,6 +3113,41 @@ function drawPlayerLazer() {
 
 
 /**
+ * Helper to debug raycasting by drawing the rays
+ */
+function drawRay(id, origin, direction) {
+    var pointA = origin;
+    var direction = direction;
+    direction.normalize();
+
+    var distance = 100; // at what distance to determine pointB
+
+    var pointB = new THREE.Vector3();
+    pointB.addVectors ( pointA, direction.multiplyScalar( distance ) );
+    
+    var ray = debug_rays[id];
+    if(typeof ray == "undefined" || !ray){
+	var geometry = new THREE.Geometry();
+	geometry.vertices.push( pointA );
+	geometry.vertices.push( pointB );
+	var material = new THREE.LineBasicMaterial( { color : 0xff0000 } );
+	var line = new THREE.Line( geometry, material );
+	scene.add( line );
+	debug_rays[id] = line;
+    } else {
+	ray.geometry.vertices[0] = pointA;
+	ray.geometry.vertices[1] = pointB;
+	ray.geometry.verticesNeedUpdate = true;
+    }
+    
+}
+//Removes the rays again
+function removeRays(){
+    return;
+}
+
+
+/**
  * Helper to debug where an object is facing by drawing a line in the forward direction
  * @param mesh - Mesh to debug (e.g. ball)
  */
@@ -3276,9 +3456,9 @@ function moveIfInBounds2(delta, specificPlayer){
     
     //Move player to new position:
     p.hasMoved = false;
-    if(p.mass==0){ //Use Mike's fudged translations
-        // Apply the given translations to the player position
-        
+    if(p.mass==0){ //Use Mike's translations engine
+	
+	
 	//UP/DOWN: Z - First deal with the more complex up/down direction
         oldPos = p.position.clone() //We need to update this with every movement
         p.standing = false;
@@ -3334,6 +3514,13 @@ function moveIfInBounds2(delta, specificPlayer){
             p.hasMoved=true;
         }// Z
         
+        
+        
+        //Now detect any imminent collisions in the left/right/forwards/backwards plane
+        var horizontal_collisions = player.quickCollisionPrediction();
+        
+        
+        
 	//LEFT/RIGHT: X, did they collide?
 	oldPos = p.position.clone() //We need to update this with every movement
 	to_move = (p.velocity.x + p.standing_on_velocity.x)*delta + x_move_slipping; //Player_velocity + platform_velocity + velocity from slope slippage
@@ -3379,7 +3566,6 @@ function moveIfInBounds2(delta, specificPlayer){
         } else {
             p.hasMoved = true;
         }
-        
         
         //TODO: add support for stepup
         //if(collision=="stepup"){ //Only the bottom of your character collided gently with a platform, so step onto it
