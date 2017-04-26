@@ -68,9 +68,9 @@ var SCREEN_WIDTH = window.innerWidth,
     // Camera rendering range
     NEAR = 1,
     FAR = 2000,
-    chaseScale = 3.5,
+    chaseScale = 5.5,
     chaseAngle = 0,
-    cameraOffset = new THREE.Vector3(0,0,3),
+    cameraOffset = new THREE.Vector3(0,0,4),
 
     // Movement speeds
     speed = 8,
@@ -437,14 +437,14 @@ function init() {
     // LIGHTS
     //
 
-    // Ambient light is flat black
-    ambient = new THREE.AmbientLight( 0x000000 );
+    // Ambient light is 10%
+    ambient = new THREE.AmbientLight( 0x202020, 10 );
     scene.add( ambient );
 
     // Sun lights (two of them for fun reflective patterns
     // This achieves the appearance/art style I'm going for
-    light = new THREE.DirectionalLight( 0xffe0bb, 1.3 );
-    light2 = new THREE.DirectionalLight( 0xffe0bb, 1.3 );
+    light = new THREE.DirectionalLight( 0xffe0bb, 1.0 );
+    light2 = new THREE.DirectionalLight( 0xffe0bb, 1.0 );
 
     // Moon light to make the "night time" not totally unplayable
     // Stays active during the day too, so essentialyl 3 lights are active
@@ -1225,6 +1225,7 @@ function createScene(data) {
 	var vertex_collisions = [];
 	var all_floor_properties = []; //Contains the restitution and friction for the floor you are standing on
 	var collided_with_objects = []; //The object you are colliding with
+	var standing_on_ids = [];
 	for(var rayIndex=0; rayIndex < zVertices.length; rayIndex++){ //Only need to test four rays! 
 	    var local_vertex = zVertices[rayIndex].clone(); //Grab the vertex
 	    var global_vertex = local_vertex.applyMatrix4(this.matrixWorld); //Turn into global position
@@ -1236,6 +1237,7 @@ function createScene(data) {
 		var ray_distance = collided_with.distance; //The closest point on the ray from origin which hit the object
 		vertex_collisions.push(ray_distance);
 		collided_with_objects.push(collided_with);
+		standing_on_ids.push(collided_with.object.id); //Add its ID into the list of objects you are standing on
 		all_floor_properties.push(collided_with.object.material._physijs); //Allows us to get the friction and restitution of the object! ##HERE##
 	    } else { //No collisions of ray with objects / ground
 		vertex_collisions.push(Infinity);
@@ -1272,7 +1274,7 @@ function createScene(data) {
 	    standing_on = collided_with_objects[shortest_vertex_index]; //Resolve what you are standing on
 	    //console.log(standing_on);
 	}
-	    
+	
 	
 	return {
 	    "direction": direction.z, //The Z direction (-1 down, +1 up)
@@ -1283,7 +1285,8 @@ function createScene(data) {
 	    "vertices" : zVertices,
 	    "vertices_names" : vertex_names,
 	    "floor_properties" : floor_properties,
-	    "standing_on" : standing_on
+	    "standing_on" : standing_on,
+	    "standing_on_ids" : standing_on_ids
 	}
     }
     
@@ -1292,6 +1295,8 @@ function createScene(data) {
      * Detects collisions that are about to happen in the x and y direction.
      * This allows you to detect when you're about to get shoved by a moving platform
      * 
+     * @param otherObjs: [<object>] A list of objects to test against
+     * @param excludedObjs: [<object>] A list of objects to ignore (e.g. the ones you are standing on!)
      * @return: {
      * 		"x" : [<collision_object>,<collision_object>,], //Collisions to the LEFT
      * 		"-x" : [<collision_object>,<collision_object>,], //Collisions to the RIGHT
@@ -1299,13 +1304,16 @@ function createScene(data) {
      * }
      * 
      */
-    player.quickCollisionPrediction = function(otherObjs){
+    player.quickCollisionPrediction = function(otherObjs, excludedObjsIds){
 	//Sanitise inputs
 	var target_objects = otherObjs || all_collidables ; //Default to our all_trees obstacle collection
 	var origin_point = this.position.clone();
 	
 	//Prepare outputs
 	var collisions = {};
+	
+	console.log("Excluded objs:");
+	console.log(excludedObjsIds);
 	
 	//Do the ray loop
 	for(var k in this.flat_plane_points){
@@ -1330,30 +1338,33 @@ function createScene(data) {
 		    if(collided_with.distance <= this.PLATFORM_GRACE*5){ //Get close enough, that counts as a collision!
 			//Now we monkey-patch a property onto the collision_result object to see if the item was moving relative to you:
 			var object = collided_with.object;
+			if(excludedObjsIds.indexOf(object.id)!=-1){ //Bail if it's an excluded object (e.g. the ones you are standing on)
+			    return collisions;
+			}
 			var object_velocity = object.velocity;
 			// A collision occurs when:
 			//		ray_direction.x * (player.velocity.x - rot(platform_velocity.x)) > 0		//In which case, set player.velocity.x = rot(platform_velocity.x)
 			// or..		ray_direction.y * (player.velocity.y - rot(platform_velocity.y)) > 0		//In which case, set player.velocity.y = rot(platform_velocity.y)
 			if(object_velocity){
-			    console.log("Object velocity: "+object_velocity.str());
+			    //console.log("Object velocity: "+object_velocity.str());
 			    var object_velocity_rel_player = object_velocity.applyZRotation3(this.rotation.z); 	//Convert the platform's velocity into the player's axis (it'll copy it for us)
-			    console.log("Rotated object velocity: "+object_velocity_rel_player.str());
+			    //console.log("Rotated object velocity: "+object_velocity_rel_player.str());
 			} else {
 			    var object_velocity_rel_player = 0;
 			}
 			var x_axis_collision = direction_player.x * (player.velocity.x - object_velocity_rel_player.x); 
 			if(x_axis_collision > 0){ //That's a collision in the x axis
 			    player.velocity.x = object_velocity_rel_player.x;
-			    //player.standing_on_velocity.x = object_velocity_rel_player.x;
+			    player.standing_on_velocity.x = 0; //Ensures you'll be swiped off if you're also on a moving platform
 			}
 			var y_axis_collision = direction_player.y * (player.velocity.y - object_velocity_rel_player.y)
 			if(y_axis_collision > 0){ //That's a collision in the x axis
 			    player.velocity.y = object_velocity_rel_player.y;
-			    //player.standing_on_velocity.y = object_velocity_rel_player.y;
+			    player.standing_on_velocity.y = 0;
 			}
-			console.log("X hit: "+x_axis_collision+", Y hit: "+y_axis_collision);
+			//console.log("X hit: "+x_axis_collision+", Y hit: "+y_axis_collision);
 			collisions[k].push(collided_with); //Add this into our collision dict 
-			debugger;
+			//debugger;
 		    }
 		}
 	    }
@@ -1463,7 +1474,8 @@ function createScene(data) {
 
     // Point the camera at the player
     // FIXME: Change this to point where the player is looking instead of at the player directly
-    camera.lookAt(scene.position);
+    //camera.lookAt(scene.position);
+    camera.lookAt(player.position);
 
     // Determine the initial rotational offset based on radius, angle and scale
     var cameraOffset = new THREE.Vector3(0,0,0),
@@ -3116,6 +3128,7 @@ function drawPlayerLazer() {
  * Helper to debug raycasting by drawing the rays
  */
 function drawRay(id, origin, direction) {
+    return;
     var pointA = origin;
     var direction = direction;
     direction.normalize();
@@ -3515,11 +3528,8 @@ function moveIfInBounds2(delta, specificPlayer){
         }// Z
         
         
-        
         //Now detect any imminent collisions in the left/right/forwards/backwards plane
-        var horizontal_collisions = player.quickCollisionPrediction();
-        
-        
+        var horizontal_collisions = player.quickCollisionPrediction(all_collidables, dist_to_hit.standing_on_ids); //Second property is the stuff you are standing on
         
 	//LEFT/RIGHT: X, did they collide?
 	oldPos = p.position.clone() //We need to update this with every movement
@@ -3583,6 +3593,7 @@ function moveIfInBounds2(delta, specificPlayer){
 	var force = new THREE.Vector3(xTranslation, yTranslation, zTranslation);
 	p.applyCentralImpulse(force);
     }
+    
     
     //Have you moved out of bounds?
     if (!isBetween(p.position.x, -width, width) ||
