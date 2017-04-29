@@ -75,7 +75,7 @@ var SCREEN_WIDTH = window.innerWidth,
     // Movement speeds
     speed = 8,
     angleSpeed = 1.25,
-    MOVE_SPEED = speed*20,
+    MOVE_SPEED = speed*25,
 
     worldWidth = 64,
     worldDepth = 64,
@@ -156,6 +156,9 @@ var SCREEN_WIDTH = window.innerWidth,
     
     // All collidables:
     all_platforms = [], all_collidables = [], moving_entities=[],
+    
+    // Collectables and interactables
+    all_interactables = [],
 
     // Client-player info
     playerId, nickname,
@@ -173,8 +176,8 @@ var SCREEN_WIDTH = window.innerWidth,
     var hasLock = false; //Lock is off initially (overidden later on in debug mode
     
     var POWER_STATES = { //Show what each power state gives you [standard, orange, yellow, white]
-	    "jump" : [45,50,60,70],
-	    "move" : [MOVE_SPEED*1.0, MOVE_SPEED*1.2, MOVE_SPEED*1.4, MOVE_SPEED*1.8],
+	    "jump" : [50,55,60,65],
+	    "move" : [MOVE_SPEED*1.0, MOVE_SPEED*1.2, MOVE_SPEED*1.4, MOVE_SPEED*1.6],
 	    "shoot" : [1,2,3,4],
 	    "max_gradient" : [1.0,1.3,1.6,1.9],
     }
@@ -407,6 +410,7 @@ function init() {
 
     // Scene has to be a Physijs Scene, not a THREE scene so physics work
     scene = new Physijs.Scene({ fixedTimeStep: 1 / 120 });
+    scene.loaded = false; //Holds off events and collision detection until loaded
     scene.fog = new THREE.Fog( 0xffffff, 1000, FAR );   // Fog is irrelevant
 
     // Physics - set gravity and update listener
@@ -837,7 +841,9 @@ function connect(nickname) {
  * @param data - Connection info
  */
 function createScene(data) {
-
+    
+    console.log(data);
+    
     //
     // WATER
     //
@@ -957,6 +963,47 @@ function createScene(data) {
 	"size" : [30,30,100]
     });
 
+    
+    //
+    // PICKUPS!!!!!
+    //
+    for(var pu=0; pu<5; pu++) {
+	var xPos = (Math.random() * worldWidth*2) - (worldWidth / 1);
+	var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
+        var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 3; //Find position just above ground 
+        var pos = new THREE.Vector3(xPos,yPos,zPos);
+        console.log(pos);
+        var pup = new SuperMega.Powerup({
+            "position" : pos,
+            "translation" : new THREE.Vector3(0,0,20),
+	    "translation_mode" : "reciprocating",
+	    "magnitude" : 10,
+        });
+        all_interactables.push(pup);
+        scene.add(pup);
+    }
+    
+    
+    //
+    // TRAPS!!!!!
+    //
+    for(var tp=0; tp<5; tp++) {
+	var xPos = (Math.random() * worldWidth*2) - (worldWidth / 1);
+	var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
+        var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 3; //Find position just above ground 
+        var pos = new THREE.Vector3(xPos,yPos,zPos);
+        var trap = new SuperMega.Trap({
+            "position" : pos,
+            "translation" : new THREE.Vector3(Math.random()*30,Math.random()*30,Math.random()*5),
+	    "translation_mode" : "reciprocating",
+	    "magnitude" : 120,
+        });
+        all_platforms.push(trap);
+        moving_entities.push(trap);
+        scene.add(trap);
+    }
+    
+    
     //
     // TREES
     //
@@ -1026,8 +1073,8 @@ function createScene(data) {
         playerPhysMaterials,
         0  //Mass - if >0 player is amenable to gravity. This is not a good idea because we move with translations, not forces!!
     ); //LOCAL PLAYER
+    player.ready = false;
 
-    console.log(player);
     // Assign starting properties
     player.userData.id = data.player.player_id;
     player.userData.nickname = nickname;
@@ -1096,6 +1143,9 @@ function createScene(data) {
     //Player constants:
     player.PLATFORM_GRACE = 0.15; //Units above a platform you will hover.
     
+    //Shadows:
+    player.castShadow = true;
+    player.receiveShadow = true;
     
     //Velocity management
     /**
@@ -1151,11 +1201,19 @@ function createScene(data) {
     
     //Now build a collision detector:
     /**
+     * Internal collision detector, uses rays which pass from object centre to vertices. Useful for "after the fact" collision detection
+     * 
      * @param otherObjs: The list of objects we are testing a collision for
+     * 
+     * @return {
+     * 		"other_objects" : other_objects we collided with
+     *		"rays" : dict of ray:distance to contact
+     *	}
      */
     player.detectCollision = function(otherObjs){
 	var target_objects = otherObjs || all_collidables; //Default to our all_trees obstacle collection
 	var rays_hit = {}; //Dict of what hit what
+	var other_objects = [];
 	var collision_detected = false;
 	var origin_point = this.position.clone();
 	
@@ -1171,6 +1229,7 @@ function createScene(data) {
     		//Now look for collisions
     		var collisionResults = this.caster.intersectObjects( target_objects );
     		if ( collisionResults.length > 0 && collisionResults[0].distance < directionVector.length() ) { //Means this ray collided!
+    		    other_objects.push(collisionResults[0].object);
     		    var closest_hit_to_centre = collisionResults[0].distance; //The closest point on the ray from origin which hit the object
     		    var percentage_distance_hit = closest_hit_to_centre/directionVector.length(); //The percentage distance along the ray to the vertex where contact happened 
     		    collision_detected = true;
@@ -1182,7 +1241,10 @@ function createScene(data) {
 	
 	if(collision_detected){
 	    //console.log(rays_hit);
-	    return rays_hit;
+	    return {
+		"other_objects" : other_objects,
+		"rays" : rays_hit
+	    }
 	}
 	return false;
 	
@@ -1192,6 +1254,8 @@ function createScene(data) {
     /**
      * Detects when you'll collide with something if jumping or falling, so that we can arrest the Z movement by the specified amount
      * This stops you jumping and falling through platforms. It'll also ensure you "hover" just over objects rather than collide with them all the time
+     * Uses rays extending from the object above and below
+     * 
      * @param otherObjs: The list of objects we are testing a collision for
      * 
      * @return: {
@@ -1270,9 +1334,19 @@ function createScene(data) {
 	//Use the closest to touching floor item to deduce friction:
 	var floor_properties = all_floor_properties[shortest_vertex_index];
 	var standing_on = null; //Default to not standing on stuff
-	if(player.velocity.z<=0 && Math.abs(shortest_dist) < 2*player.PLATFORM_GRACE){ //Just fallen and now standing on something
-	    standing_on = collided_with_objects[shortest_vertex_index]; //Resolve what you are standing on
-	    //console.log(standing_on);
+	var hit_touchable = null;
+	if(Math.abs(shortest_dist) < 2*player.PLATFORM_GRACE){ //Just come into contact with a platfornm
+	    if(player.velocity.z<=0){ //Standing on it
+        	    standing_on = collided_with_objects[shortest_vertex_index]; //Resolve what you are standing on
+        	    //console.log(standing_on);
+	    }
+	    //Add in any traps etc with "touched" methods
+	    if(typeof collided_with_objects[shortest_vertex_index] !== "undefined"){
+		if(typeof collided_with_objects[shortest_vertex_index].object.touched !== "undefined"){
+		    var hit_touchable = collided_with_objects[shortest_vertex_index].object;
+		    console.log(hit_touchable);
+		}
+	    }
 	}
 	
 	
@@ -1286,7 +1360,8 @@ function createScene(data) {
 	    "vertices_names" : vertex_names,
 	    "floor_properties" : floor_properties,
 	    "standing_on" : standing_on,
-	    "standing_on_ids" : standing_on_ids
+	    "standing_on_ids" : standing_on_ids,
+	    "hit_touchable" : hit_touchable
 	}
     }
     
@@ -1297,6 +1372,7 @@ function createScene(data) {
      * 
      * @param otherObjs: [<object>] A list of objects to test against
      * @param excludedObjs: [<object>] A list of objects to ignore (e.g. the ones you are standing on!)
+     * @param delta: Time since last frame (useful for detecting downstream touched events)
      * @return: {
      * 		"x" : [<collision_object>,<collision_object>,], //Collisions to the LEFT
      * 		"-x" : [<collision_object>,<collision_object>,], //Collisions to the RIGHT
@@ -1304,7 +1380,7 @@ function createScene(data) {
      * }
      * 
      */
-    player.quickCollisionPrediction = function(otherObjs, excludedObjsIds){
+    player.quickCollisionPrediction = function(otherObjs, excludedObjsIds, delta){
 	//Sanitise inputs
 	var target_objects = otherObjs || all_collidables ; //Default to our all_trees obstacle collection
 	var origin_point = this.position.clone();
@@ -1312,8 +1388,8 @@ function createScene(data) {
 	//Prepare outputs
 	var collisions = {};
 	
-	console.log("Excluded objs:");
-	console.log(excludedObjsIds);
+	//console.log("Excluded objs:");
+	//console.log(excludedObjsIds);
 	
 	//Do the ray loop
 	for(var k in this.flat_plane_points){
@@ -1358,11 +1434,17 @@ function createScene(data) {
 			    player.standing_on_velocity.x = 0; //Ensures you'll be swiped off if you're also on a moving platform
 			}
 			var y_axis_collision = direction_player.y * (player.velocity.y - object_velocity_rel_player.y)
-			if(y_axis_collision > 0){ //That's a collision in the x axis
+			if(y_axis_collision > 0){ //That's a collision in the y axis
 			    player.velocity.y = object_velocity_rel_player.y;
 			    player.standing_on_velocity.y = 0;
 			}
-			//console.log("X hit: "+x_axis_collision+", Y hit: "+y_axis_collision);
+			//Fire the downstream properties of the thing we collided with
+			if(typeof object.touched !== "undefined"){
+			    object.touched(delta, player, scene);
+			}
+			
+			
+			//Store our collision to return
 			collisions[k].push(collided_with); //Add this into our collision dict 
 			//debugger;
 		    }
@@ -1389,9 +1471,60 @@ function createScene(data) {
 	}
 	player.power_state = pow;
 	player.material.color.setHex(player.POWER_COLOURS[pow]);
-	console.log("POWER UP!!! "+pow);
+	console.log("POWER CHANGE "+pow);
 	return player.power_state;
     }
+    player.powerUp = function(increment){ //Powers the player up!!
+	increment = increment || 1;
+	var old_power = player.power_state;
+	
+	//+1 to power
+	var new_power = player.setPower(player.power_state+increment);
+	
+	return old_power < new_power; //Should return true if power up has happened
+    }
+    
+    /**
+     * Injures the player, if player loses all hit points, drops down a power level
+     * 
+     * @param damage: The amount of hitpoints to deduct from this power state
+     */
+    player.injure = function(damage){
+	this.userData.hp -= damage;
+	if(this.userData.hp <= 0){
+	    if(this.power_state<=0){ //DEATH!!
+		// Drop a hilarious boundy dead body
+                dropDeadBody(this);
+
+                // Hide the normal model
+                this.visible = false;
+                this.userData.sprite.visible = false;
+
+                // Publish death notification
+                addNotification(this.userData.nickname + " was killed.");
+	    } else { //Decrement the power state by 1
+		this.setPower(this.power_state-1);
+		this.userData.hp = 100; //Restore hps for lower power level
+	    }
+	    
+	}
+	// Update the remote player's sprite for the HP changes
+        updatePlayerSprite(this.userData.id);
+    }
+    /**
+     * Boosts the player's health by the life amount
+     * 
+     * @param life: The amount of hitpoints to recover
+     */
+    player.heal = function(life){
+	this.userData.hp += life;
+	if(this.userData.hp > 100){
+	    this.userData.hp = 100;
+	}
+	// Update the remote player's sprite for the HP changes
+        updatePlayerSprite(this.userData.id);
+    }
+    
 
     //Now build a movement anticipator:
     /**
@@ -1403,7 +1536,7 @@ function createScene(data) {
      * @return: false if movement is ok, decimal for the ray length if it causes a collision
      */
     player.lastMovementCausesCollision = function(x,y,z){
-	var ray_collisions = this.detectCollision();
+	var ray_collisions = this.detectCollision().rays;
 	for(var key in ray_collisions){
 	    var coll_length = ray_collisions[key];
 	    if(key.indexOf("left") !== -1 && x>0){ //Means a leftward movement is causing a collision at the left
@@ -1594,6 +1727,7 @@ function animate(delta) {
         return;
     } else if (!loaded) {
         loaded = true;
+        scene.loaded=true; //Need to monkey-patch the scene to know we are loaded!!
     }
 
     // Frame flags and speeds based on time delta
@@ -1611,6 +1745,9 @@ function animate(delta) {
         //playerMoved = moveIfInBounds(player.velocity.x*delta, player.velocity.y*delta, player.velocity.z*delta) || playerMoved; //Original motion conditionals
         mu = moveIfInBounds2(delta); //Improved collision detection. Detects if you have collided with something, if so undoes the movement you just did and resets the velocities to suit. Returns the friction coefficient of what you are standing on!
         playerMoved = player.hasMoved; //Monkey patched property
+        if(player.hasMoved){ //Quick detection to ensure we don't touch things until properly init
+            player.ready = true;
+        }
         
         //Calculate traction. This is linked to friction, but capped by your ability to push off,
         if(mu>0.5 || mu < 0.01){ //Keep traction sensible!
@@ -1765,6 +1902,10 @@ function animate(delta) {
     // Animate moving entities:
     for(var k=0; k < moving_entities.length; k++){
 	var item = moving_entities[k];
+	item.animate(delta); //Call the method on the entity
+    }
+    for(var k=0; k < all_interactables.length; k++){
+	var item = all_interactables[k];
 	item.animate(delta); //Call the method on the entity
     }
     
@@ -2611,7 +2752,7 @@ function addPlatform(x, y, z, rotation, ice) {
 	platformObj.rotation.x = rotation.x;
 	platformObj.rotation.y = rotation.y;
 	platformObj.rotation.z = rotation.z;
-	console.log("Platform rotation provided: "+rotation.str());
+	//console.log("Platform rotation provided: "+rotation.str());
     } else {
 	var x_rotation_amt = (Math.random()-0.5) * 0.2 * Math.PI; //Tilt 
 	platformObj.rotation.x = x_rotation_amt; //remaining gravity flat
@@ -2619,10 +2760,12 @@ function addPlatform(x, y, z, rotation, ice) {
 	platformObj.rotation.y = y_rotation_amt; //remaining gravity flat
 	var z_rotation_amt = Math.random() * Math.PI;
 	platformObj.rotation.z = z_rotation_amt; //remaining gravity flat
-	console.log("Platform rotation randomised: "+platformObj.rotation.str());
+	//console.log("Platform rotation randomised: "+platformObj.rotation.str());
     }
     
-    
+    //Platforms have shadows (receiving shadows v important for knowing when player above a platform!!)
+    platformObj.castShadow = true;
+    platformObj.receiveShadow = true;
 
     // Add the complete tree to the scene
     scene.add(platformObj);
@@ -2740,12 +2883,21 @@ function addMovingPlatform(options) {
     platformObj.origin = platformObj.position.clone(); //Where we started (or orbit around!)
     platformObj.rotation_matrix = new THREE.Matrix4(); //Necessary to do axis rotations
     
+    //Add in shadows
+    platformObj.castShadow = true; //Turn off for speed optimisation
+    platformObj.receiveShadow = true;
+    
     //Now monkey-patch on the animation capabilities:
     /**
      * platformObj.animate - animates the movement of the platform
      * @param delta: The number of seconds between frames
      */
     platformObj.animate = function(delta){
+	//Fast abort for non-movers!
+	if(this.magnitude == 0 && this.rotation_mode == null && this.translation_mode == null){
+	    return;
+	}
+	
 	//Save current position:
 	var pos_before = this.position.clone();
 	//Angular_momentum applies to rotation on axis
@@ -2799,8 +2951,8 @@ function addMovingPlatform(options) {
     all_platforms.push(platformObj); //Will clip like a platform now!
     
     scene.add(platformObj);
-    console.log("Moving platform:");
-    console.log(platformObj);
+    //console.log("Moving platform:");
+    //console.log(platformObj);
     return platformObj;
 }
 
@@ -3486,6 +3638,10 @@ function moveIfInBounds2(delta, specificPlayer){
         	p.velocity.z = 0; //Set velocity to zero
         	player.jump_keydown_continuously = false; //Null off the persistent space press
         	p.standing = false;
+        	if(dist_to_hit.hit_touchable){
+        	    console.log("TOUCH");
+        	    dist_to_hit.hit_touchable.touched(delta, p, scene); //Detect whacking head on trap
+        	}
             }//Z
         } else { //Falling or walking
             if(-to_move > (dist_to_hit.shortest - p.PLATFORM_GRACE)){ //You're gonna land on your feet (NB to_move is vector, dist_to_hit is scalar!)
@@ -3494,12 +3650,20 @@ function moveIfInBounds2(delta, specificPlayer){
         	p.standing=true;
         	p.isJumping = false;
         	player.jump_keydown_continuously = false; //Null off the persistent space press
+        	if(dist_to_hit.hit_touchable){
+        	    console.log("TOUCH");
+        	    dist_to_hit.hit_touchable.touched(delta, p, scene); //Detect whacking head on trap
+        	}
             }// Z
             if(dist_to_hit <= p.PLATFORM_GRACE){ //The definition of standing is if you are perched at the grace distance above a platform
         	//STANDING ON A PLATFORM
         	p.standing = true;
         	//p.adjustStandingOnVelocity(dist_to_hit.standing_on); //Adjust our standing velocity
         	p.isJumping = false;
+        	if(dist_to_hit.hit_touchable){
+        	    console.log("TOUCH");
+        	    dist_to_hit.hit_touchable.touched(delta, p, scene); //Detect whacking head on trap
+        	}
             }
             //SLIPPING CODE: Now, check to see if our gradient is actually safe:
             if(p.standing && (Math.abs(dist_to_hit.x_gradient) > max_grad || Math.abs(dist_to_hit.y_gradient) > max_grad) ){ //Sorry, you're just too slippy!
@@ -3512,7 +3676,7 @@ function moveIfInBounds2(delta, specificPlayer){
         	p.velocity.z = 0; //Set velocity to zero
         	p.adjustStandingOnVelocity(dist_to_hit.standing_on); //Adjust our standing velocity to match the platform if the platform is moving
             }
-            console.log(dist_to_hit.x_gradient+"/"+dist_to_hit.y_gradient+" max:"+max_grad);
+            //console.log(dist_to_hit.x_gradient+"/"+dist_to_hit.y_gradient+" max:"+max_grad);
         }
         p.translateZ(to_move); //Jumping (+) / falling (-)
         //var collision = playerTouchingObjs(p); //Checks collision against non-ground objects
@@ -3529,7 +3693,7 @@ function moveIfInBounds2(delta, specificPlayer){
         
         
         //Now detect any imminent collisions in the left/right/forwards/backwards plane
-        var horizontal_collisions = player.quickCollisionPrediction(all_collidables, dist_to_hit.standing_on_ids); //Second property is the stuff you are standing on
+        var horizontal_collisions = player.quickCollisionPrediction(all_collidables, dist_to_hit.standing_on_ids, delta); //Second property is the stuff you are standing on
         
 	//LEFT/RIGHT: X, did they collide?
 	oldPos = p.position.clone() //We need to update this with every movement
@@ -3607,12 +3771,27 @@ function moveIfInBounds2(delta, specificPlayer){
         //p.velocity.z = 0;
         p.hasMoved = false;
     }
+
+    
     //Update physi.js
     p.__dirtyPosition = true;
     p.__dirtyRotation = true;
    
     //If you have moved, are you still on the ground?
     jumpingOrFallingPlayerZ(p); //This will soon be replaced by our clever vertical rays
+    
+    //Collect any collectables you are touching:
+    var hit_collectables = p.detectCollision(all_interactables);
+    if(hit_collectables && scene.loaded && player.ready){
+	console.log("Hit pickup!!")
+	var already_hit = [];
+	$.each(hit_collectables.other_objects, function(){
+	    if(already_hit.indexOf(this)==-1){ //Prevent double-collision issues
+		this.collect(player,scene); //Collect this object!
+		already_hit.push(this);
+	    }
+        });
+    }
     
     
     //Horizontal velocity decay: //TODO: decay according to the friction against the player (slides on ice, drags through water)
