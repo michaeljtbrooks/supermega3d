@@ -14,6 +14,15 @@
 //Namespace
 window.SuperMega = {};
 
+//Our default colours in 0xHEX
+SuperMega.DEFAULT_COLOURS = {
+	"trap" : 0x2222FF,
+	"platform" : 0xF762A8,
+	"powerup" : 0xFFF022,
+	"switch" : 0x444444,
+	"magic_switch" : 0xDDDDDD,
+	"end" : 0x8316FF
+}
 
 
 /**
@@ -64,7 +73,10 @@ SuperMega.Interactable = function (options){
     //Now we have enough to create our object:
     Physijs.BoxMesh.call(this, ops.geometry, ops.material, ops.mass ); //JS inheritance hack part 1
     this.ops = ops;     //Store our options globally
+    
+    //Set up physical location
     this.position = ops.position;
+    this.orientation = this.orientate(ops.orientation);
     
     //Add the sub objects to it:
     this.contains = [];
@@ -96,7 +108,6 @@ SuperMega.Interactable = function (options){
 SuperMega.Interactable.prototype = Object.assign( Object.create(Physijs.BoxMesh.prototype), {
     constructor: SuperMega.Interactable
 }); //JS inheritance hack part 2
-
 
 SuperMega.Interactable.prototype.animate = function(delta){
     /**
@@ -159,7 +170,46 @@ SuperMega.Interactable.prototype.animate = function(delta){
 	//Update position for physijs;
 	this.__dirtyPosition = true;
 	this.__dirtyRotation = true;
+}
+
+
+SuperMega.Interactable.prototype.orientate = function(x_or_vector, y, z, amount){
+    /**
+     * Changes the orientation of this object to what you specify
+     * 
+     *  @param x,y,z
+     *   	A single Vector3
+     *   	or, a triple array
+     *   	or, x,y,z as separate entities
+     *   	or "random" for a random rotation
+     *  @param amount: The proportion of 90 degrees you wish to rotate by if using "random"
+     *  	
+     */
     
+    if(typeof x_or_vector.clone !== "undefined"){ //Has been given a vector to define rotation
+	var x_rotation_amt = x_or_vector.x;
+	var y_rotation_amt = x_or_vector.y;
+	var z_rotation_amt = x_or_vector.z;
+    }else if(typeof x_or_vector == "Array"){ //Has been given an array to define rotation
+	var x_rotation_amt = x_or_vector[0] || 0;
+	var y_rotation_amt = x_or_vector[1] || 0;
+	var z_rotation_amt = x_or_vector[2] || 0;
+    }else if(x_or_vector == "random" || x_or_vector == "Random" || typeof x_or_vector=="undefined"){ //Means randomise me!!
+	amount = amount || y || 0.2;
+	var x_rotation_amt = (Math.random()-0.5) * amount * Math.PI; //Tilt 
+	var y_rotation_amt = (Math.random()-0.5) * amount * Math.PI;
+	var z_rotation_amt = Math.random() * Math.PI;
+    }else{
+	var x_rotation_amt = x_or_vector || 0;
+	var y_rotation_amt = y || 0;
+	var z_rotation_amt = z || 0;
+    }
+    this.rotation.x = x_rotation_amt;
+    this.rotation.y = y_rotation_amt;
+    this.rotation.z = z_rotation_amt;
+    this.__dirtyRotation = true;
+    this.geometry.verticesNeedUpdate = true;
+    return this;
 }
 
 SuperMega.Interactable.prototype.is_collectable = function(){
@@ -174,9 +224,10 @@ SuperMega.Interactable.prototype.is_collectable = function(){
     return false;
 }
 
-SuperMega.Interactable.prototype.pickup = function(player, scene){
+SuperMega.Interactable.prototype.pickup = function(delta, player, scene){
     /**
      * "Collects" this object if it is collectable. Will start it regenerating if regeneratable
+     * @param delta: The time since last frame
      * @param player: The player who is collecting this
      * @keyword scene: The scene we are operating in (for removing when collected) if not passed in via options
      */
@@ -200,7 +251,7 @@ SuperMega.Interactable.prototype.pickup = function(player, scene){
 	} else {
 	    //Otherwise just make contents transparent and deactivate animations etc
 	    this.material.opacity = 0;
-	    for(i=0; i<this.contains.length; i++){
+	    for(var i=0; i<this.contains.length; i++){
 		this.contains[i].material.opacity=0;
 		this.contains[i].material.transparent=true;
 	    }
@@ -209,16 +260,62 @@ SuperMega.Interactable.prototype.pickup = function(player, scene){
     }
 }
 
-SuperMega.Interactable.prototype.collect = function(player,scene){
+SuperMega.Interactable.prototype.collect = function(delta, player, scene){
     /**
      * Alias to ensure collect() works consistently
-     * 
+     * @param delta: The time since last frame
      * @param player: The player who is collecting this
      * @keyword scene: The scene we are operating in (for removing when collected) if not passed in via options
      */
-    return this.pickup(player,scene);
+    return this.pickup(delta, player,scene);
 }
 
+
+
+
+/**
+ * Creates a PLATFORM!!!
+ * 
+ * @param options: The usual set of options
+ */
+SuperMega.Platform = function(options){
+    options = options || {};
+    //Fix the geometry etc
+    options.geometry = options.geometry || new THREE.CubeGeometry(10, 10, 2);
+    options.material = options.material || Physijs.createMaterial(
+                            new THREE.MeshPhongMaterial( {
+                                color: SuperMega.DEFAULT_COLOURS.platform, //Yellow
+                                transparent: false
+                            }),
+                            .5, // normal friction
+                            .4 // lowish restitution
+                        );
+    
+    //Create the thing:
+    SuperMega.Interactable.call( this, options ); //JS inheritance hack part 1
+    this.collectable = false; //This is not a collectable!!
+    this.inflicts_damage = 0; //How much damage is inflicted on touching for every second of contact:
+    //Platforms need decent shadows!!
+    this.castShadow = true;
+    this.receiveShadow = true;
+}
+SuperMega.Platform.prototype = Object.assign( Object.create(SuperMega.Interactable.prototype), {
+    constructor : SuperMega.Platform,
+    touched : function(delta, player, scene){
+	    /**
+	     * Injures the player
+	     * @param delta: The time since last frame
+	     * @param player: The player who is collecting this
+	     * @keyword scene: The scene we are operating in (for removing when collected) if not passed in via options
+	     */
+	    scene = scene || this.ops.scene || null;
+	    
+	    //Injure the player:
+	    if(this.inflicts_damage>0){
+		player.injure(this.inflicts_damage*delta);
+	    }
+    }
+});
 
 
 
@@ -233,7 +330,7 @@ SuperMega.Trap = function(options){
     options.geometry = options.geometry || new THREE.CubeGeometry(10, 5, 2);
     options.material = options.material || Physijs.createMaterial(
                             new THREE.MeshPhongMaterial( {
-                                color: 0x2222FF, //Yellow
+                                color: SuperMega.DEFAULT_COLOURS.trap, //Yellow
                                 transparent: false
                             }),
                             .9, // v high friction
@@ -241,24 +338,13 @@ SuperMega.Trap = function(options){
                         );
     
     //Create the thing:
-    SuperMega.Interactable.call( this, options ); //JS inheritance hack part 1
+    SuperMega.Platform.call( this, options ); //JS inheritance hack part 1
     this.collectable = false; //This is not a collectable!!
     this.inflicts_damage = 1000; //How much damage is inflicted on touching for every second of contact:
 }
-SuperMega.Trap.prototype = Object.assign( Object.create(SuperMega.Interactable.prototype), {
-    constructor : SuperMega.Trap,
-    touched : function(delta, player, scene){
-	    /**
-	     * Injures the player
-	     * 
-	     * @param player: The player who is collecting this
-	     * @keyword scene: The scene we are operating in (for removing when collected) if not passed in via options
-	     */
-	    scene = scene || this.ops.scene || null;
-	    
-	    //Injure the player:
-	    player.injure(this.inflicts_damage*delta);
-    }
+SuperMega.Trap.prototype = Object.assign( Object.create(SuperMega.Platform.prototype), {
+    constructor : SuperMega.Trap
+    //Touched method now defined above
 });
 
 /**
@@ -272,7 +358,7 @@ SuperMega.Powerup = function(options){
     options.geometry = new THREE.SphereGeometry(2, 64, 64);
     options.material = Physijs.createMaterial(
                             new THREE.MeshPhongMaterial( {
-                                color: 0xFFF022, //Yellow
+                                color: SuperMega.DEFAULT_COLOURS.powerup, //Yellow
                                 transparent: false
                             }),
                             .8, // high friction
@@ -290,10 +376,10 @@ SuperMega.Powerup = function(options){
 }
 SuperMega.Powerup.prototype = Object.assign( Object.create(SuperMega.Interactable.prototype), {
     constructor : SuperMega.Powerup,
-    collect : function(player, scene){
+    collect : function(delta, player, scene){
 	    /**
 	     * "Collects" this item
-	     * 
+	     * @param delta: The time since last frame
 	     * @param player: The player who is collecting this
 	     * @keyword scene: The scene we are operating in (for removing when collected) if not passed in via options
 	     */
@@ -303,7 +389,7 @@ SuperMega.Powerup.prototype = Object.assign( Object.create(SuperMega.Interactabl
 	    if(this.is_collectable()){ //Means the thing can be picked up 
 		//this.active=false;
     		//Pick up the item (remove from scene):
-    		this.pickup(player,scene);
+    		this.pickup(delta, player, scene);
 		player.powerUp(1); //Returns true if player has more power headroom
 		player.heal(100); //Ensure player gets their health up
 	    }

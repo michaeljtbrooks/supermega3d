@@ -972,7 +972,6 @@ function createScene(data) {
 	var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
         var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 3; //Find position just above ground 
         var pos = new THREE.Vector3(xPos,yPos,zPos);
-        console.log(pos);
         var pup = new SuperMega.Powerup({
             "position" : pos,
             "translation" : new THREE.Vector3(0,0,20),
@@ -987,20 +986,30 @@ function createScene(data) {
     //
     // TRAPS!!!!!
     //
-    for(var tp=0; tp<5; tp++) {
+    for(var tp=0; tp<10; tp++) {
 	var xPos = (Math.random() * worldWidth*2) - (worldWidth / 1);
 	var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
         var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 3; //Find position just above ground 
         var pos = new THREE.Vector3(xPos,yPos,zPos);
-        var trap = new SuperMega.Trap({
-            "position" : pos,
-            "translation" : new THREE.Vector3(Math.random()*30,Math.random()*30,Math.random()*5),
-	    "translation_mode" : "reciprocating",
-	    "magnitude" : 120,
-        });
-        all_platforms.push(trap);
-        moving_entities.push(trap);
-        scene.add(trap);
+        var type = (Math.random()*2);
+        if(type<1){ //Make a trap
+            var thing = new SuperMega.Trap({
+                "position" : pos,
+                "translation" : new THREE.Vector3(Math.random()*30-15,Math.random()*30-15,Math.random()*6-3),
+        	"translation_mode" : "reciprocating",
+        	"magnitude" : 100,
+            });
+        }else{ //Make a platform
+            var thing = new SuperMega.Platform({
+                "position" : pos,
+                "translation" : new THREE.Vector3(Math.random()*30-15,Math.random()*30-15,Math.random()*6-3),
+        	"translation_mode" : "reciprocating",
+        	"magnitude" : 100,
+            });
+        }
+        all_platforms.push(thing); //Ensures we can stand on them and behave as solid objects
+        moving_entities.push(thing); //Ensures they get animated
+        scene.add(thing);
     }
     
     
@@ -1073,19 +1082,47 @@ function createScene(data) {
         playerPhysMaterials,
         0  //Mass - if >0 player is amenable to gravity. This is not a good idea because we move with translations, not forces!!
     ); //LOCAL PLAYER
-    player.ready = false;
-
-    // Assign starting properties
+    
+    //Identity and name for server
     player.userData.id = data.player.player_id;
     player.userData.nickname = nickname;
-    player.userData.hp = 100.0;
-    player.isJumping = false; //Not used
-    player.velocity = new THREE.Vector3(0,0,0); //Actual velocity relative to player
-    player.standing_on_velocity = new THREE.Vector3(0,0,0); //The velocity of the last thing you stood on!
-    player.power_state = 0; //Start off at nowt power
-    player.jump_keydown_continuously = false; //Space is not being pressed
-    // Because I decided to make Z vertical (instead of Y)
-    player.up.x = 0; player.up.y = 0; player.up.z = 1;
+    
+    //Outside reset defaults
+    player.body = false;
+    
+    //Reset routine
+    player.reset = function(){
+        
+        this.ready = false;
+    
+        // Assign starting properties
+        this.userData.hp = 100.0;
+        this.isJumping = false; //Not used
+        this.velocity = new THREE.Vector3(0,0,0); //Actual velocity relative to player
+        this.standing_on_velocity = new THREE.Vector3(0,0,0); //The velocity of the last thing you stood on!
+        this.power_state = 0; //Start off at nowt power
+        this.jump_keydown_continuously = false; //Space is not being pressed
+        
+        // Because I decided to make Z vertical (instead of Y)
+        this.up.x = 0; this.up.y = 0; this.up.z = 1;
+        
+        
+        //Make real player visible again
+        updatePlayerSprite(this.userData.id); //Inits the sprite
+        this.visible = true;
+        //this.userData.sprite.visible = true;
+        // Delete all my balls
+        deletePlayerBalls(this.userData.id);
+
+        this.__dirtyPosition = true;
+        this.__dirtyRotation = true;
+        
+        //Remove any straggling bodies:
+        if(this.body){
+            scene.remove(this.body)
+        }
+    }
+    player.reset();
     
     
     //Create collision ray LocalVectors - these are the directions we'll send the rays off in
@@ -1344,7 +1381,6 @@ function createScene(data) {
 	    if(typeof collided_with_objects[shortest_vertex_index] !== "undefined"){
 		if(typeof collided_with_objects[shortest_vertex_index].object.touched !== "undefined"){
 		    var hit_touchable = collided_with_objects[shortest_vertex_index].object;
-		    console.log(hit_touchable);
 		}
 	    }
 	}
@@ -1494,7 +1530,7 @@ function createScene(data) {
 	if(this.userData.hp <= 0){
 	    if(this.power_state<=0){ //DEATH!!
 		// Drop a hilarious boundy dead body
-                dropDeadBody(this);
+                this.body = dropDeadBody(this);
 
                 // Hide the normal model
                 this.visible = false;
@@ -1502,6 +1538,7 @@ function createScene(data) {
 
                 // Publish death notification
                 addNotification(this.userData.nickname + " was killed.");
+                deadScreen.show();
 	    } else { //Decrement the power state by 1
 		this.setPower(this.power_state-1);
 		this.userData.hp = 100; //Restore hps for lower power level
@@ -1511,6 +1548,7 @@ function createScene(data) {
 	// Update the remote player's sprite for the HP changes
         updatePlayerSprite(this.userData.id);
     }
+    
     /**
      * Boosts the player's health by the life amount
      * 
@@ -1518,13 +1556,21 @@ function createScene(data) {
      */
     player.heal = function(life){
 	this.userData.hp += life;
-	if(this.userData.hp > 100){
-	    this.userData.hp = 100;
+	if(this.userData.hp > 100.0){
+	    this.userData.hp = 100.0;
 	}
 	// Update the remote player's sprite for the HP changes
         updatePlayerSprite(this.userData.id);
     }
     
+    
+    /**
+     * Respawns the player
+     */
+    player.respawn = function(){
+	this.heal(100);
+	this.reset();
+    }
 
     //Now build a movement anticipator:
     /**
@@ -1858,6 +1904,7 @@ function animate(delta) {
                 waitRequired(KEYCODE.ENTER);
 
                 // Tell the server the player wants to respawn
+                player.respawn();
                 socket.emit('respawn');
 
                 // Remove the dead overlay
@@ -2729,6 +2776,29 @@ function addPlatform(x, y, z, rotation, ice) {
                 .4 // low restitution
             )
     }
+    
+    
+    
+    //Check our supermega.platform obj works:
+    platformObj = new SuperMega.Platform({
+	"material":platformMat,
+	"geometry":platformGeo,
+	"mass" : 0,
+	"position" : new THREE.Vector3(xPos, yPos, zPos),
+    	"orientation" : "random"
+    });
+    
+
+    
+    // Add the complete tree to the scene
+    scene.add(platformObj);
+    
+    //Make a note of our platforms in the collision list:
+    all_platforms.push(platformObj); //platform, abusing trees for now
+    
+    return platformObj;
+    
+    
         // Parent container which holds hit boxes and tree model
     var platformObj = new Physijs.BoxMesh(
             platformGeo,
@@ -3639,7 +3709,6 @@ function moveIfInBounds2(delta, specificPlayer){
         	player.jump_keydown_continuously = false; //Null off the persistent space press
         	p.standing = false;
         	if(dist_to_hit.hit_touchable){
-        	    console.log("TOUCH");
         	    dist_to_hit.hit_touchable.touched(delta, p, scene); //Detect whacking head on trap
         	}
             }//Z
@@ -3651,7 +3720,6 @@ function moveIfInBounds2(delta, specificPlayer){
         	p.isJumping = false;
         	player.jump_keydown_continuously = false; //Null off the persistent space press
         	if(dist_to_hit.hit_touchable){
-        	    console.log("TOUCH");
         	    dist_to_hit.hit_touchable.touched(delta, p, scene); //Detect whacking head on trap
         	}
             }// Z
@@ -3661,7 +3729,6 @@ function moveIfInBounds2(delta, specificPlayer){
         	//p.adjustStandingOnVelocity(dist_to_hit.standing_on); //Adjust our standing velocity
         	p.isJumping = false;
         	if(dist_to_hit.hit_touchable){
-        	    console.log("TOUCH");
         	    dist_to_hit.hit_touchable.touched(delta, p, scene); //Detect whacking head on trap
         	}
             }
@@ -3787,7 +3854,7 @@ function moveIfInBounds2(delta, specificPlayer){
 	var already_hit = [];
 	$.each(hit_collectables.other_objects, function(){
 	    if(already_hit.indexOf(this)==-1){ //Prevent double-collision issues
-		this.collect(player,scene); //Collect this object!
+		this.collect(delta, player, scene); //Collect this object!
 		already_hit.push(this);
 	    }
         });
@@ -3869,7 +3936,8 @@ function dropDeadBody(targetPlayer) {
 
     // Add the body to the world and let the hilarity commence
     scene.add( body );
-
+    
+    return body;
 }
 
 
