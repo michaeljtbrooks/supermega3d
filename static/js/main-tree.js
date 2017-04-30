@@ -119,7 +119,11 @@ var SCREEN_WIDTH = window.innerWidth,
                 CollisionTypes.BODY |
                 CollisionTypes.PLAYER //Allowing ground to collide with player
     },
-    STEPUP_THRESHOLD = 0.80, //How far down an object must hit you to trigger a stepup
+    STEPUP_THRESHOLD = 0.80, //How far down an object must hit you to trigger a stepup (NOT ACTIVE)
+    PLAYER_HEIGHT = 2, //Our player's height
+    PLAYER_WIDTH = PLAYER_HEIGHT / 2,
+    PLAYER_DEPTH = PLAYER_HEIGHT / 2,
+
 
     // Core scene elements
     camera, controls, scene, renderer,
@@ -141,9 +145,6 @@ var SCREEN_WIDTH = window.innerWidth,
 
     // Scene elements
     player, balls = {}, players = {},
-    PLAYER_HEIGHT = 2, //Our player's height
-    PLAYER_WIDTH = PLAYER_HEIGHT / 2,
-    PLAYER_DEPTH = PLAYER_HEIGHT / 2,
 
     // Terrain elements
     ground, hills, water,
@@ -343,6 +344,7 @@ function init() {
     // Hud setup
     hud.currentBallCount = $('#hud-ammo .current');
     hud.maxBallCount = $('#hud-ammo .max');
+    hud.nomCount = $('#hud-noms .current');
     notificationHud = $('#hud-notifications ul');
     notificationHud.append('<li id="debug-stats"></li>');
     
@@ -409,7 +411,8 @@ function init() {
     //
 
     // Scene has to be a Physijs Scene, not a THREE scene so physics work
-    scene = new Physijs.Scene({ fixedTimeStep: 1 / 120 });
+    scene = new Physijs.Scene({ fixedTimeStep: 1 / 60 });
+    var level = new SuperMega.Level(scene); //Test it
     scene.loaded = false; //Holds off events and collision detection until loaded
     scene.fog = new THREE.Fog( 0xffffff, 1000, FAR );   // Fog is irrelevant
 
@@ -520,7 +523,7 @@ function init() {
 
     // Setup the THREE.js gl renderer
     // (opting out of antialias, cuz i don't really want it - or the performance costs of it)
-    renderer = new THREE.WebGLRenderer( { antialias: false } );
+    renderer = new THREE.WebGLRenderer( { antialias: false, alpha: true } );
     renderer.setSize( SCREEN_WIDTH, SCREEN_HEIGHT );
     containerDiv.appendChild( renderer.domElement );
     renderer.setClearColor( scene.fog.color, 1 );
@@ -1005,12 +1008,43 @@ function createScene(data) {
                 "translation" : new THREE.Vector3(Math.random()*30-15,Math.random()*30-15,Math.random()*6-3),
         	"translation_mode" : "reciprocating",
         	"magnitude" : 100,
+        	"preset" : "ice_platform"
             });
         }
         all_platforms.push(thing); //Ensures we can stand on them and behave as solid objects
         moving_entities.push(thing); //Ensures they get animated
         scene.add(thing);
     }
+    
+    //
+    // NOMS!!!!!
+    //
+    for(var nm=0; nm<10; nm++) {
+	var xPos = (Math.random() * worldWidth*2) - (worldWidth / 1);
+	var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
+        var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 1; //Find position just above ground 
+        var pos = new THREE.Vector3(xPos,yPos,zPos);
+        var nom = new SuperMega.Nom({
+            "position" : pos,
+        });
+        all_interactables.push(nom); //Ensures we can stand on them and behave as solid objects
+        moving_entities.push(nom); //Ensures they get animated
+        scene.add(nom);
+    }
+    
+    //
+    // The End
+    //
+    var xPos = (Math.random() * worldWidth*2) - (worldWidth / 1);
+    var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
+    var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 0.25; //Find position just above ground 
+    var pos = new THREE.Vector3(xPos,yPos,zPos);
+    var the_end = new SuperMega.TheEnd({
+        "position" : pos,
+    });
+    all_interactables.push(the_end); //Ensures we can stand on them and behave as solid objects
+    moving_entities.push(the_end); //Ensures they get animated
+    scene.add(the_end);
     
     
     //
@@ -1089,6 +1123,7 @@ function createScene(data) {
     
     //Outside reset defaults
     player.body = false;
+    player.noms = 0; //Number of noms!!
     
     //Reset routine
     player.reset = function(){
@@ -1119,7 +1154,7 @@ function createScene(data) {
         
         //Remove any straggling bodies:
         if(this.body){
-            scene.remove(this.body)
+            scene.remove(this.body);
         }
     }
     player.reset();
@@ -1281,7 +1316,7 @@ function createScene(data) {
 	    return {
 		"other_objects" : other_objects,
 		"rays" : rays_hit
-	    }
+	    };
 	}
 	return false;
 	
@@ -1398,7 +1433,7 @@ function createScene(data) {
 	    "standing_on" : standing_on,
 	    "standing_on_ids" : standing_on_ids,
 	    "hit_touchable" : hit_touchable
-	}
+	};
     }
     
     
@@ -1490,6 +1525,17 @@ function createScene(data) {
 	
 	return collisions;
     }
+    
+    
+    /**
+     * Increases nom score:
+     * @param noms_collected: The number of noms just picked up
+     */
+    player.get_nom = function(noms_collected){
+	noms_collected = noms_collected || 1;
+	this.noms += 1;
+	hud.nomCount.text(this.noms);
+    }
 
     /**
      * Sets the player's power level to pow
@@ -1500,24 +1546,35 @@ function createScene(data) {
     player.setPower = function(pow){
 	pow = Number(pow);
 	if(isNaN(pow)){ //Sanity check
-	    return player.power_state;
+	    return this.power_state;
 	}
 	if(pow > 3 || pow < 0){ //Ignore it
-	    return player.power_state;
+	    return this.power_state;
 	}
-	player.power_state = pow;
-	player.material.color.setHex(player.POWER_COLOURS[pow]);
+	this.power_state = pow;
+	this.material.color.setHex(this.POWER_COLOURS[pow]);
 	console.log("POWER CHANGE "+pow);
-	return player.power_state;
+	
+	//Deactivate shooting if on lowest power
+	if(this.power_state < 1){
+	    hud.currentBallCount.text("0");
+	    hud.maxBallCount.text("0");
+	}else{
+	    hud.currentBallCount.text(maxBallCount - currentBallCount);
+	    hud.maxBallCount.text(maxBallCount);
+	}
+	
+	return this.power_state;
     }
-    player.powerUp = function(increment){ //Powers the player up!!
+    player.set_power = player.setPower; //ALIAS
+    player.power_up = function(increment){ //Powers the player up!!
 	increment = increment || 1;
-	var old_power = player.power_state;
+	var old_power = this.power_state;
 	
 	//+1 to power
-	var new_power = player.setPower(player.power_state+increment);
+	var new_power = this.setPower(this.power_state+increment);
 	
-	return old_power < new_power; //Should return true if power up has happened
+	return (old_power < new_power); //Should return true if power up has happened
     }
     
     /**
@@ -1727,7 +1784,7 @@ function createScene(data) {
         // THAT'S IT FOR SETUP - THE REST IS AUTONOMOUS
         //
 
-    } );
+    });
 }
 
 
@@ -4014,4 +4071,6 @@ function ballWatcher() {
 // *********************************************************************************************************************
 
 // COMMENCE THE FUN
-init();
+$(document).ready(function() {
+    init();
+});
