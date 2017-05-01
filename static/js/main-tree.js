@@ -56,6 +56,7 @@ if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
 // *********************************************************************************************************************
 
 var DEBUG = true; //Debug mode
+var level; //Where we'll store our level
 
     // screen size
 var SCREEN_WIDTH = window.innerWidth,
@@ -412,7 +413,7 @@ function init() {
 
     // Scene has to be a Physijs Scene, not a THREE scene so physics work
     scene = new Physijs.Scene({ fixedTimeStep: 1 / 60 });
-    var level = new SuperMega.Level(scene); //Test it
+    level = new SuperMega.Level(scene); //Scene now held in level too
     scene.loaded = false; //Holds off events and collision detection until loaded
     scene.fog = new THREE.Fog( 0xffffff, 1000, FAR );   // Fog is irrelevant
 
@@ -446,7 +447,7 @@ function init() {
 
     // Ambient light is 10%
     ambient = new THREE.AmbientLight( 0x202020, 10 );
-    scene.add( ambient );
+    level.add(ambient,"lighting","ambient"); //Adds to the level therefore the scene
 
     // Sun lights (two of them for fun reflective patterns
     // This achieves the appearance/art style I'm going for
@@ -503,8 +504,8 @@ function init() {
     }
 
     // Add the lights to the scene
-    scene.add( lightRig );
-    scene.add( moon );
+    level.add( lightRig, "lighting", "rig" );
+    level.add( moon, "lighting", "moon" );
 
     // Offset the lights in the rig
     light.position.set( 10, 0, 0 );
@@ -1542,7 +1543,7 @@ function createScene(data) {
      * 
      * @param pow: <int> the power level from 0-3
      */
-    player.POWER_COLOURS = ["0xAA0000","0xBB8800","0xE0E000","0xEAEAEA"]
+    player.POWER_COLOURS = ["0xAA0000","0xBB8800","0xE0E000","0xEAEAEA"];
     player.setPower = function(pow){
 	pow = Number(pow);
 	if(isNaN(pow)){ //Sanity check
@@ -2378,7 +2379,7 @@ function addPlayer(data) {
     }
 
     // Add the new player to the scene
-    scene.add( player );
+    level.add( player, "players", data.player_id);
 
     // Add the player to the global collection
     players[data.player_id] = player;
