@@ -97,8 +97,47 @@ SuperMega.resolve_vector = function(x_or_vector, y, z){
 }
 
 
+
 /**
- * Level: A wrapper around scene to hold our global objects in
+ * Screen: What we actually show on the screen
+ * 
+ * Contains the level, HUD notifications, overlays etc
+ * 
+ * @keyword level: The SuperMega.Level scene
+ */
+SuperMega.screen = function(level){
+	
+	//If level, add it
+	this.level = level || null;
+	
+	//Identify our overlays 
+	this.overlays = { //Contains our various overlay screens
+		"skyUnderlay" : $('#pagewrapper');
+		"deadScreen" : $('#respawn');
+	}
+	
+	//Indentify our head-up-displays (huds)
+	this.hud = {
+		"currentBallCount" : $('#hud-ammo .current');
+	    "maxBallCount" : $('#hud-ammo .max');
+	    "nomCount" : $('#hud-noms .current');
+	    "notificationHud" : $('#hud-notifications ul');
+	}
+
+}
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * Level: A wrapper around scene to hold our global scene objects in
  * 
  * Level.scene:  Our scene
  * Level.scene:  Our clock
@@ -135,7 +174,7 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
     liquid_terrain: [], //Surface we can pass through (but balls cant)
     //The dict items
     lighting: {}, //The lights
-    players: {},
+    players: {}, //Players in the scene
     
     //Single properties
     player: null, //The local player object
@@ -342,12 +381,12 @@ SuperMega.Player = function (options, scene, hud){
     this.reset(scene, hud);
     
 }
-SuperMega.Interactable.prototype = Object.assign( Object.create(Physijs.BoxMesh.prototype), {
+SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.prototype), {
     constructor: SuperMega.Player,
     
     //Constants:
-    POWER_COLOURS = ["0xAA0000","0xBB8800","0xE0E000","0xEAEAEA"],
-    PLATFORM_GRACE = 0.15, //How close you need to be to the platform to be regarded as "standing on it"
+    POWER_COLOURS: ["0xAA0000","0xBB8800","0xE0E000","0xEAEAEA"],
+    PLATFORM_GRACE: 0.15, //How close you need to be to the platform to be regarded as "standing on it"
 
 	//Initialise variables:
 	body: false, //When the patient dies adds a dead body to the scene
@@ -437,7 +476,7 @@ SuperMega.Interactable.prototype = Object.assign( Object.create(Physijs.BoxMesh.
         
         this.caster = new THREE.Raycaster(); //Use one raycaster, save memory!
     	
-    }
+    },
     
     
 	reset : function(options, scene, hud){
@@ -568,7 +607,7 @@ SuperMega.Interactable.prototype = Object.assign( Object.create(Physijs.BoxMesh.
     	}
     	return false;
     },
-    detectCollisions : detectCollision,
+    detectCollisions : this.detectCollision,
     
     
     
@@ -889,11 +928,11 @@ SuperMega.Interactable.prototype = Object.assign( Object.create(Physijs.BoxMesh.
 		    // Create and return a fancy new player sprite
 		    var sprite = new THREE.Sprite(sprite_material);
 		    sprite.scale.set( 10, 10, 1 );
-		    this.userData.sprite = sprite; //Store in object
+		    this.sprite = sprite; //Store in object
 		    return sprite;
 	},
 	
-	update_sprite = function(){
+	update_sprite : function(){
 		/**
 		 * Updates the player's name and hitpoint bar (called the "sprite")
 		 * 
@@ -910,19 +949,20 @@ SuperMega.Interactable.prototype = Object.assign( Object.create(Physijs.BoxMesh.
         return this.sprite;
 	},
 	
-	/**
-	 * Deletes all of the given player's balls from the scene
-	 * @param scene: <Physijs.scene> to remove balls from
-	 * @param hud: <jQuery HUD element> to update ball count
-	 * @param options: {} Not currently used
-	 */
-	delete_balls = function(scene, hud, options) {
+	
+	delete_balls : function(scene, hud, options) {
+		/**
+		 * Deletes all of the given player's balls from the scene
+		 * @param scene: <Physijs.scene> to remove balls from
+		 * @param hud: <jQuery HUD element> to update ball count
+		 * @param options: {} Not currently used
+		 */
 		//Resolve inputs
-		scene = scene || null;
+		scene = scene || this.scene || null;
+		hud = hud || this.hud || null
 		if(scene==null){
 			console.log("ERROR: Player.delete_balls(scene, hud) requires a valid scene as argument.");
 		}
-		hud = hud || null;
 		if(hud == null){
 			console.log("WARNING: Player.delete_balls(scene, hud) cannot update the hud without a valid hud passed in!!");
 		}
@@ -948,7 +988,109 @@ SuperMega.Interactable.prototype = Object.assign( Object.create(Physijs.BoxMesh.
 
 	    // Update the ball counter HUD cuz the player count might have changed
 	    hud.currentBallCount.text(this.maxBallCount - this.currentBallCount);
-	}
+	},
+	
+	setPower : function(pow){
+	    /**
+	     * Sets the player's power level to pow
+	     * 
+	     * @param pow: <int> the power level from 0-3
+	     */
+		pow = Number(pow);
+		if(isNaN(pow)){ //Sanity check
+		    return this.power_state;
+		}
+		if(pow > 3 || pow < 0){ //Ignore it
+		    return this.power_state;
+		}
+		this.power_state = pow;
+		this.material.color.setHex(this.POWER_COLOURS[pow]);
+		console.log("POWER CHANGE "+pow);
+		
+		//Deactivate shooting if on lowest power
+		if(this.power_state < 1){
+		    this.hud.currentBallCount.text("0");
+		    this.hud.maxBallCount.text("0");
+		}else{
+		    this.hud.currentBallCount.text(maxBallCount - currentBallCount);
+		    this.hud.maxBallCount.text(maxBallCount);
+		}
+		
+		return this.power_state;
+	},
+	set_power : this.setPower, //ALIAS
+	
+	power_up : function(increment){ 
+		/**
+		 * Increases the player's full power state by n
+		 * 
+		 * @param increment: Number of power steps to jump by, default = 1
+		 */
+		increment = increment || 1;
+		var old_power = this.power_state;
+		//+1 to power
+		var new_power = this.set_power(this.power_state+increment);
+		return (old_power < new_power); //Should return true if power up has happened
+	},
+	
+	respawn : function(){
+		this.heal(100);
+		this.reset();
+	},
+	
+	injure : function(damage){
+		/**
+	    * Injures the player, if player loses all hit points, drops down a power level
+	    * 
+	    * @param damage: The amount of hitpoints to deduct from this power state
+	    */
+		this.hp -= damage;
+		if(this.hp <= 0){
+		    if(this.power_state<=0){ //DEATH!!
+			// Drop a hilarious boundy dead body
+	                this.body = dropDeadBody(this);
+	
+	                // Hide the normal model
+	                this.visible = false;
+	                this.sprite.visible = false;
+	
+	                // Publish death notification //TODO: Put into the Level obj
+	                addNotification(this.nickname + " was killed.");
+	                deadScreen.show();
+		    } else { //Decrement the power state by 1
+		    	this.setPower(this.power_state-1);
+		    	this.hp = 100; //Restore hps for lower power level
+		    }
+		    
+		}
+		// Update the remote player's sprite for the HP changes
+	    this.update_sprite();
+	},
+	
+    heal : function(life){
+    	/**
+         * Boosts the player's health by the life amount
+         * 
+         * @param life: The amount of hitpoints to recover
+         */
+    	this.hp += life;
+    	if(this.hp > 100.0){
+    		this.hp = 100.0;
+    	}
+    	//Update the remote player's sprite for the HP changes
+        this.update_sprite();
+    },
+    
+    get_nom : function(noms_collected){
+        /**
+         * Increases nom score:
+         * @param noms_collected: The number of noms just picked up
+         */
+    	noms_collected = noms_collected || 1;
+    	this.noms += 1;
+    	this.hud.nomCount.text(this.noms);
+    }
+	
 
 	
     
