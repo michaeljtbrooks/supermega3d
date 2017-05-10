@@ -1092,607 +1092,611 @@ function createScene(data) {
     //
     // PLAYER
     //
-
-    // Setup player material based on color from server
-    var playerMaterial = new THREE.MeshPhongMaterial({
-            color: data.player.color,
-            ambient: data.player.color, // should generally match color
-            specular: 0x050505,
-            shininess: 100
-        }),
-
-        // Simple cube rectangle geometry
-        playerGeometry = new THREE.CubeGeometry( 1, 1, 2, 1, 1, 1 ),
-
-        // Create the player as a physics object, to take advantage of physics collisions
-        playerPhysMaterials = Physijs.createMaterial(
-            playerMaterial,
-            .8, // high friction
-            .4 // low restitution
-        );
-
-    // Create the physics-enabled player mesh
-    player = new Physijs.BoxMesh(
-        playerGeometry,
-        playerPhysMaterials,
-        0  //Mass - if >0 player is amenable to gravity. This is not a good idea because we move with translations, not forces!!
-    ); //LOCAL PLAYER
     
-    //Identity and name for server
-    player.userData.id = data.player.player_id;
-    player.userData.nickname = nickname;
+    player = new SuperMega.Player({player_id : data.player.player_id, nickname : nickname}, scene, hud);
     
-    //Outside reset defaults
-    player.body = false;
-    player.noms = 0; //Number of noms!!
-    
-    //Reset routine
-    player.reset = function(){
-        
-        this.ready = false;
-    
-        // Assign starting properties
-        this.userData.hp = 100.0;
-        this.isJumping = false; //Not used
-        this.velocity = new THREE.Vector3(0,0,0); //Actual velocity relative to player
-        this.standing_on_velocity = new THREE.Vector3(0,0,0); //The velocity of the last thing you stood on!
-        this.power_state = 0; //Start off at nowt power
-        this.jump_keydown_continuously = false; //Space is not being pressed
-        
-        // Because I decided to make Z vertical (instead of Y)
-        this.up.x = 0; this.up.y = 0; this.up.z = 1;
-        
-        
-        //Make real player visible again
-        updatePlayerSprite(this.userData.id); //Inits the sprite
-        this.visible = true;
-        //this.userData.sprite.visible = true;
-        // Delete all my balls
-        deletePlayerBalls(this.userData.id);
-
-        this.__dirtyPosition = true;
-        this.__dirtyRotation = true;
-        
-        //Remove any straggling bodies:
-        if(this.body){
-            scene.remove(this.body);
-        }
-    }
-    player.reset();
-    
-    
-    //Create collision ray LocalVectors - these are the directions we'll send the rays off in
-    player.ray_dirvectors = [];
-    var dirs = [[0, 0, -1], [0, 0, 1], [0, -1, 0], [0, 1, 0], [1, 0, 0], [-1, 0, 0]];
-    for (var i = 0; i < dirs.length; i++) {
-        player.ray_dirvectors.push(new THREE.Vector3(dirs[i][0]*(player.geometry.width/2),dirs[i][1]*player.geometry.depth/2,dirs[i][2]*player.geometry.height/2));
-    }
-    for (var vertexIndex = 0; vertexIndex < player.geometry.vertices.length; vertexIndex++){
-	player.ray_dirvectors.push(player.geometry.vertices[vertexIndex]); //Add the rays off to the vertices
-    }
-    //Index numbers:       0	    1       2        3       4       5           6              7                8                 9                  10               11                12              13
-    //z axis perpendicular
-    player.ray_names = ["bottom", "top", "front", "back", "left", "right", "leftbacktop", "leftbackbottom","leftfronttop","leftfrontbottom", "rightbackbottom", "rightbacktop", "rightfrontbottom", "rightfronttop"]; //Let's hope the THREE vertex order never changes!!
-    player.bottom_vertices = [player.ray_dirvectors[7], player.ray_dirvectors[9], player.ray_dirvectors[10], player.ray_dirvectors[12]]; //Store our vectors with "bottom" in them
-    player.bottom_vertices_names = [player.ray_names[7], player.ray_names[9], player.ray_names[10], player.ray_names[12]];
-    player.top_vertices = [player.ray_dirvectors[6], player.ray_dirvectors[8], player.ray_dirvectors[11], player.ray_dirvectors[13]]; //Store our vectors with "top" in them
-    player.top_vertices_names = [player.ray_names[6], player.ray_names[8], player.ray_names[11], player.ray_names[13]];
-    
-    //x axis perpendicular
-    player.left_vertices = [player.ray_dirvectors[4], player.ray_dirvectors[6], player.ray_dirvectors[7], player.ray_dirvectors[8], player.ray_dirvectors[9]]; //Store our vectors with "left" in them, INCLUDING THE CENTRAL VECTOR (it's a large face!)
-    player.left_vertices_names = [player.ray_names[4], player.ray_names[6], player.ray_names[7], player.ray_names[8], player.ray_names[9]];
-    player.right_vertices = [player.ray_dirvectors[5], player.ray_dirvectors[10], player.ray_dirvectors[11], player.ray_dirvectors[12], player.ray_dirvectors[13]]; //Store our vectors with "top" in them
-    player.right_vertices_names = [player.ray_names[5], player.ray_names[10], player.ray_names[11], player.ray_names[12], player.ray_names[13]];
-    
-    //y axis perpendicular
-    player.front_vertices = [player.ray_dirvectors[2], player.ray_dirvectors[8], player.ray_dirvectors[9], player.ray_dirvectors[12], player.ray_dirvectors[13]]; //Store our vectors with "front" in them, INCLUDING THE CENTRAL VECTOR (it's a large face!)
-    player.front_vertices_names = [player.ray_names[2], player.ray_names[8], player.ray_names[9], player.ray_names[12], player.ray_names[13]];
-    player.back_vertices = [player.ray_dirvectors[3], player.ray_dirvectors[6], player.ray_dirvectors[7], player.ray_dirvectors[10], player.ray_dirvectors[11]]; //Store our vectors with "back" in them
-    player.back_vertices_names = [player.ray_names[3], player.ray_names[6], player.ray_names[7], player.ray_names[10], player.ray_names[11]];
-    
-    //Organise into dict:
-    player.flat_plane_points = {
-	"x" : player.left_vertices,
-	"-x" : player.right_vertices,
-	"y" : player.back_vertices,
-	"-y" : player.front_vertices
-    }
-    player.flat_plane_points_names = {
-	"x" : player.left_vertices_names,
-	"-x" : player.right_vertices_names,
-	"y" : player.back_vertices_names,
-	"-y" : player.front_vertices_names
-    }
-    player.flat_plane_points_directions = {
-	"x" : new THREE.Vector3(1,0,0),
-	"-x" : new THREE.Vector3(-1,0,0),
-	"y" : new THREE.Vector3(0,1,0),
-	"-y" : new THREE.Vector3(0,-1,0)
-    }
+    //Flip over to our player class
+	if(false){
+	    // Setup player material based on color from server
+	    var playerMaterial = new THREE.MeshPhongMaterial({
+	            color: data.player.color,
+	            ambient: data.player.color, // should generally match color
+	            specular: 0x050505,
+	            shininess: 100
+	        }),
+	
+	        // Simple cube rectangle geometry
+	        playerGeometry = new THREE.CubeGeometry( 1, 1, 2, 1, 1, 1 ),
+	
+	        // Create the player as a physics object, to take advantage of physics collisions
+	        playerPhysMaterials = Physijs.createMaterial(
+	            playerMaterial,
+	            .8, // high friction
+	            .4 // low restitution
+	        );
+	
+	    // Create the physics-enabled player mesh
+	    player = new Physijs.BoxMesh(
+	        playerGeometry,
+	        playerPhysMaterials,
+	        0  //Mass - if >0 player is amenable to gravity. This is not a good idea because we move with translations, not forces!!
+	    ); //LOCAL PLAYER
 	    
-    
-    player.caster = new THREE.Raycaster(); //Use one raycaster, save memory!
-    
-    //Player constants:
-    player.PLATFORM_GRACE = 0.15; //Units above a platform you will hover.
-    
-    //Shadows:
-    player.castShadow = true;
-    player.receiveShadow = true;
-    
-    //Velocity management
-    /**
-     * Adjusts the player's velocity for conservation of momentum if player rotates while moving (most noticable on ice sliding)
-     * @param z_rotation_speed: The angular momentum player is rotating by
-     */
-    player.rotateVelocity = function(z_rotation_speed){
-	//Capture old velocities:
-	var old_vel = this.velocity.clone();
-	//Convert to new velocity. NB if we rotate the player clockwise, our velocities are moving ANTICLOCKWISE relatively, hence an inverse angular momentum
-	this.velocity.x = old_vel.x * Math.cos(z_rotation_speed) + old_vel.y * Math.sin(z_rotation_speed); //Rotational matrix. 
-	this.velocity.y = old_vel.y * Math.cos(z_rotation_speed) + -old_vel.x * Math.sin(z_rotation_speed); //For rotational matrices we use -(sin A)  on the second axis
-	this.velocity.z = old_vel.z; //Yep, it's simply (0,0,1) for that rotational matrix!
-    }
-    
-    
-    /**
-     * Adjusts the player's base velocity to the platform you are standing on
-     * @param platformObj: The object you are standing on
-     */
-    player.adjustStandingOnVelocity = function (platformObj){
-	//Sanity check the platform has returned its velocity (we have to be nearly in contact with it)
-	if(!platformObj){
-	    return this.standing_on_velocity.clone();
-	}
-	
-	//Check that this platform has velocity:
-	var plat_vel = platformObj.object.velocity;
-	if(typeof platformObj.object.velocity == "undefined"){ //No velocity stated
-	    plat_vel = new THREE.Vector3(0,0,0); //It has ZERO velocity.
-	} else {
-	    plat_vel = platformObj.object.velocity.clone(); //Copy to thing
-	}
-	
-	//Now we must adjust the standing on velocity to suit
-	if(!(plat_vel.x == 0 && plat_vel.y==0 && plat_vel.z ==0 )){
-	    //Rotate the velocities into terms of the character. In the end I had to do this manually ffs.
-	    //this.standing_on_velocity = new THREE.Vector3();
-	    //this.standing_on_velocity.x = plat_vel.x * Math.cos(this.rotation.z) + plat_vel.y * Math.sin(this.rotation.z); //Rotational matrix
-	    //this.standing_on_velocity.y = plat_vel.y * Math.cos(this.rotation.z) + -plat_vel.x * Math.sin(this.rotation.z); //For rotational matrices we use -(sin A)  on the second axis
-	    //this.standing_on_velocity.z = plat_vel.z; //Yep, it's simply (0,0,1) for that rotational matrix!
-	    //Test our new function:
-	    this.standing_on_velocity = plat_vel.applyZRotation3(this.rotation.z); //My own function which does the above
-	    //console.log("Plat_vel: "+plat_vel.x+","+plat_vel.y+","+plat_vel.z+"  Player vel:"+this.standing_on_velocity.x+","+this.standing_on_velocity.y+","+this.standing_on_velocity.z+" @"+this.rotation.z);
-	    //var euler_vel = plat_vel.clone().applyEuler(this.rotation); //This doesn't quite work... why??
-	    //console.log("Euler vel: "+euler_vel.x+","+euler_vel.y+","+euler_vel.z)
-	} else {
-	    this.standing_on_velocity = plat_vel;
-	}
-	return plat_vel;
-    }
-    
-    
-    //Now build a collision detector:
-    /**
-     * Internal collision detector, uses rays which pass from object centre to vertices. Useful for "after the fact" collision detection
-     * 
-     * @param otherObjs: The list of objects we are testing a collision for
-     * 
-     * @return {
-     * 		"other_objects" : other_objects we collided with
-     *		"rays" : dict of ray:distance to contact
-     *	}
-     */
-    player.detectCollision = function(otherObjs){
-	var target_objects = otherObjs || all_collidables; //Default to our all_trees obstacle collection
-	var rays_hit = {}; //Dict of what hit what
-	var other_objects = [];
-	var collision_detected = false;
-	var origin_point = this.position.clone();
-	
-	for (var rayIndex = 0; rayIndex < this.ray_dirvectors.length; rayIndex++){		
-    			
-    		//Ray creation for point in space from player's origin
-    		var ray_name = this.ray_names[rayIndex]; //Human readable name
-    		var local_ray_dir = this.ray_dirvectors[rayIndex].clone(); //Grab the vector of this ray relative to the player's object 
-    		var global_ray_dir = local_ray_dir.applyMatrix4( this.matrix ); //Convert into a vector relative to the world map
-    		var directionVector = global_ray_dir.sub( origin_point ); //Now convert into actual positions in space
-    		this.caster.set( origin_point, directionVector.clone().normalize() ); //Create a rays eminating from the player's origin out along the vector 
-    		
-    		//Now look for collisions
-    		var collisionResults = this.caster.intersectObjects( target_objects );
-    		if ( collisionResults.length > 0 && collisionResults[0].distance < directionVector.length() ) { //Means this ray collided!
-    		    other_objects.push(collisionResults[0].object);
-    		    var closest_hit_to_centre = collisionResults[0].distance; //The closest point on the ray from origin which hit the object
-    		    var percentage_distance_hit = closest_hit_to_centre/directionVector.length(); //The percentage distance along the ray to the vertex where contact happened 
-    		    collision_detected = true;
-    		    rays_hit[ray_name] = percentage_distance_hit; //Our output dict
-    		    //console.log("Contact: "+ray_name);
-    		} else { //Ray did not collide
-    		}
-    	    }
-	
-	if(collision_detected){
-	    //console.log(rays_hit);
-	    return {
-		"other_objects" : other_objects,
-		"rays" : rays_hit
-	    };
-	}
-	return false;
-	
-    }
-    player.detectCollisions = player.detectCollision; //Alias
-    
-    /**
-     * Detects when you'll collide with something if jumping or falling, so that we can arrest the Z movement by the specified amount
-     * This stops you jumping and falling through platforms. It'll also ensure you "hover" just over objects rather than collide with them all the time
-     * Uses rays extending from the object above and below
-     * 
-     * @param otherObjs: The list of objects we are testing a collision for
-     * 
-     * @return: {
-     * 			direction: 1 (up) / -1 (down),
-     * 			shortest: <float>, (the distance down or up (depending on standing/falling or jumping) to the nearest object)
-     * 			x_gradient: <x_gradient fraction>,
-	    		z_gradient: <z_gradient fraction>,
-     * 			distances: [<float_dist1>,<float_dist2>,<float_dist3>,<float_dist4>],
-     * 			vertices: [<vertex1>,<vertex2>,<vertex3>,<vertex4>]
-     * 			vertices_names: [<vertexname1>,<vertexname2>,<vertexname3>,<vertexname4>]
-     * 			floor_properties: [<vertex1properties>,<vertex2properties>,<vertex3properties>,<vertex4properties>]
-     * }
-     */
-    player.zCollisionPrediction = function(otherObjs){
-	//Order: leftbackbottom, leftfrontbottom, rightbackbottom, rightfrontbottom
-	//Sanitise inputs
-	var target_objects = otherObjs || all_collidables ; //Default to our all_trees obstacle collection
-	
-	//Determine direction to use
-	if(player.velocity.z>0){ //Player is jumping up
-	    var zVertices = player.top_vertices; //Look up instead
-	    var direction = new THREE.Vector3(0,0,1); //upwards
-	    var vertex_names = player.top_vertices_names;
-	} else { //Standing or falling
-	    var zVertices = player.bottom_vertices; //Default to looking down
-	    var direction = new THREE.Vector3(0,0,-1); //Downwards
-	    var vertex_names = player.bottom_vertices_names;
-	}
-	
-	//Create rays which start at each vertex, then head off downwards or upwards
-	var vertex_collisions = [];
-	var all_floor_properties = []; //Contains the restitution and friction for the floor you are standing on
-	var collided_with_objects = []; //The object you are colliding with
-	var standing_on_ids = [];
-	for(var rayIndex=0; rayIndex < zVertices.length; rayIndex++){ //Only need to test four rays! 
-	    var local_vertex = zVertices[rayIndex].clone(); //Grab the vertex
-	    var global_vertex = local_vertex.applyMatrix4(this.matrixWorld); //Turn into global position
-	    this.caster.set(global_vertex, direction.clone().normalize()); //Set a ray with appropriate direction:
+	    //Identity and name for server
+	    player.userData.id = data.player.player_id;
+	    player.userData.nickname = nickname;
 	    
-	    var collisionResults = this.caster.intersectObjects(target_objects); //See what the outgoing rays hit
-	    if ( collisionResults.length > 0 ) { //Means this ray collided, unsurprising given its infinite length!!
-		var collided_with = collisionResults[0];
-		var ray_distance = collided_with.distance; //The closest point on the ray from origin which hit the object
-		vertex_collisions.push(ray_distance);
-		collided_with_objects.push(collided_with);
-		standing_on_ids.push(collided_with.object.id); //Add its ID into the list of objects you are standing on
-		all_floor_properties.push(collided_with.object.material._physijs); //Allows us to get the friction and restitution of the object! ##HERE##
-	    } else { //No collisions of ray with objects / ground
-		vertex_collisions.push(Infinity);
-		collided_with_objects.push(null);
-		all_floor_properties.push({ //Air effectively!
-		    "friction":0,
-		    "restitution":0,
-		})
-	    }
-	}
-	
-	//Calculate gradient at your feet - NB we do not bother with the PLATFORM_GRACE as it would apply to both
-	var shortest_dist = Math.min.apply(null,vertex_collisions); //Minimum distance of the four points
-	var shortest_vertex_index = vertex_collisions.indexOf(shortest_dist); //Finds which vertex has the shortest path to the object
-	if(shortest_vertex_index==0){ //Depth of the player is flipped with height, remember? (Y -> Z)
-	    var x_grad = (vertex_collisions[2] - shortest_dist)/this.geometry.width;
-	    var y_grad = (vertex_collisions[1] - shortest_dist)/this.geometry.height;
-	} else if(shortest_vertex_index==1){ 
-	    var x_grad = (vertex_collisions[3] - shortest_dist)/this.geometry.width;
-	    var y_grad = (0-(vertex_collisions[0] - shortest_dist))/this.geometry.height;
-	} else if(shortest_vertex_index==2){ 
-	    var x_grad = (0-(vertex_collisions[0] - shortest_dist))/this.geometry.width;
-	    var y_grad = (vertex_collisions[3] - shortest_dist)/this.geometry.height;
-	} else if(shortest_vertex_index==3){ 
-	    var x_grad = (0-(vertex_collisions[1] - shortest_dist))/this.geometry.width;
-	    var y_grad = (0-(vertex_collisions[2] - shortest_dist))/this.geometry.height;
-	}
-	
-	
-	//Use the closest to touching floor item to deduce friction:
-	var floor_properties = all_floor_properties[shortest_vertex_index];
-	var standing_on = null; //Default to not standing on stuff
-	var hit_touchable = null;
-	if(Math.abs(shortest_dist) < 2*player.PLATFORM_GRACE){ //Just come into contact with a platfornm
-	    if(player.velocity.z<=0){ //Standing on it
-        	    standing_on = collided_with_objects[shortest_vertex_index]; //Resolve what you are standing on
-        	    //console.log(standing_on);
-	    }
-	    //Add in any traps etc with "touched" methods
-	    if(typeof collided_with_objects[shortest_vertex_index] !== "undefined"){
-		if(typeof collided_with_objects[shortest_vertex_index].object.touched !== "undefined"){
-		    var hit_touchable = collided_with_objects[shortest_vertex_index].object;
-		}
-	    }
-	}
-	
-	
-	return {
-	    "direction": direction.z, //The Z direction (-1 down, +1 up)
-	    "shortest": shortest_dist,
-	    "x_gradient": x_grad,
-	    "y_gradient": y_grad,
-	    "distances": vertex_collisions,
-	    "vertices" : zVertices,
-	    "vertices_names" : vertex_names,
-	    "floor_properties" : floor_properties,
-	    "standing_on" : standing_on,
-	    "standing_on_ids" : standing_on_ids,
-	    "hit_touchable" : hit_touchable
-	};
-    }
-    
-    
-    /**
-     * Detects collisions that are about to happen in the x and y direction.
-     * This allows you to detect when you're about to get shoved by a moving platform
-     * 
-     * @param otherObjs: [<object>] A list of objects to test against
-     * @param excludedObjs: [<object>] A list of objects to ignore (e.g. the ones you are standing on!)
-     * @param delta: Time since last frame (useful for detecting downstream touched events)
-     * @return: {
-     * 		"x" : [<collision_object>,<collision_object>,], //Collisions to the LEFT
-     * 		"-x" : [<collision_object>,<collision_object>,], //Collisions to the RIGHT
-     * 		"x" : [<collision_object>,<collision_object>,], //Collisions to the RIGHT
-     * }
-     * 
-     */
-    player.quickCollisionPrediction = function(otherObjs, excludedObjsIds, delta){
-	//Sanitise inputs
-	var target_objects = otherObjs || all_collidables ; //Default to our all_trees obstacle collection
-	var origin_point = this.position.clone();
-	
-	//Prepare outputs
-	var collisions = {};
-	
-	//console.log("Excluded objs:");
-	//console.log(excludedObjsIds);
-	
-	//Do the ray loop
-	for(var k in this.flat_plane_points){
-	    collisions[k] = []; //Prepare the output
-	    var axis_points = this.flat_plane_points[k];
-	    var axis_points_names = this.flat_plane_points_names[k];
-	    var direction_player = this.flat_plane_points_directions[k];
+	    //Outside reset defaults
+	    player.body = false;
+	    player.noms = 0; //Number of noms!!
 	    
-	    for(var rayIndex=0; rayIndex < axis_points.length; rayIndex++){
-		var local_point = axis_points[rayIndex].clone(); //Grab the point on the surface of the player
-		var global_point = local_point.applyMatrix4(this.matrixWorld); //Turn into global position
-		var direction = direction_player.applyZRotation3(-this.rotation.z);
-		this.caster.set(global_point, direction.clone().normalize()); //Set a ray with appropriate direction
-		if(DEBUG){
-		    drawRay(String(rayIndex)+k, global_point, direction.clone().normalize());
+	    //Reset routine
+	    player.reset = function(){
+	        
+	        this.ready = false;
+	    
+	        // Assign starting properties
+	        this.userData.hp = 100.0;
+	        this.isJumping = false; //Not used
+	        this.velocity = new THREE.Vector3(0,0,0); //Actual velocity relative to player
+	        this.standing_on_velocity = new THREE.Vector3(0,0,0); //The velocity of the last thing you stood on!
+	        this.power_state = 0; //Start off at nowt power
+	        this.jump_keydown_continuously = false; //Space is not being pressed
+	        
+	        // Because I decided to make Z vertical (instead of Y)
+	        this.up.x = 0; this.up.y = 0; this.up.z = 1;
+	        
+	        
+	        //Make real player visible again
+	        updatePlayerSprite(this.userData.id); //Inits the sprite
+	        this.visible = true;
+	        //this.userData.sprite.visible = true;
+	        // Delete all my balls
+	        deletePlayerBalls(this.userData.id);
+	
+	        this.__dirtyPosition = true;
+	        this.__dirtyRotation = true;
+	        
+	        //Remove any straggling bodies:
+	        if(this.body){
+	            scene.remove(this.body);
+	        }
+	    }
+	    player.reset();
+	    
+	    
+	    //Create collision ray LocalVectors - these are the directions we'll send the rays off in
+	    player.ray_dirvectors = [];
+	    var dirs = [[0, 0, -1], [0, 0, 1], [0, -1, 0], [0, 1, 0], [1, 0, 0], [-1, 0, 0]];
+	    for (var i = 0; i < dirs.length; i++) {
+	        player.ray_dirvectors.push(new THREE.Vector3(dirs[i][0]*(player.geometry.width/2),dirs[i][1]*player.geometry.depth/2,dirs[i][2]*player.geometry.height/2));
+	    }
+	    for (var vertexIndex = 0; vertexIndex < player.geometry.vertices.length; vertexIndex++){
+		player.ray_dirvectors.push(player.geometry.vertices[vertexIndex]); //Add the rays off to the vertices
+	    }
+	    //Index numbers:       0	    1       2        3       4       5           6              7                8                 9                  10               11                12              13
+	    //z axis perpendicular
+	    player.ray_names = ["bottom", "top", "front", "back", "left", "right", "leftbacktop", "leftbackbottom","leftfronttop","leftfrontbottom", "rightbackbottom", "rightbacktop", "rightfrontbottom", "rightfronttop"]; //Let's hope the THREE vertex order never changes!!
+	    player.bottom_vertices = [player.ray_dirvectors[7], player.ray_dirvectors[9], player.ray_dirvectors[10], player.ray_dirvectors[12]]; //Store our vectors with "bottom" in them
+	    player.bottom_vertices_names = [player.ray_names[7], player.ray_names[9], player.ray_names[10], player.ray_names[12]];
+	    player.top_vertices = [player.ray_dirvectors[6], player.ray_dirvectors[8], player.ray_dirvectors[11], player.ray_dirvectors[13]]; //Store our vectors with "top" in them
+	    player.top_vertices_names = [player.ray_names[6], player.ray_names[8], player.ray_names[11], player.ray_names[13]];
+	    
+	    //x axis perpendicular
+	    player.left_vertices = [player.ray_dirvectors[4], player.ray_dirvectors[6], player.ray_dirvectors[7], player.ray_dirvectors[8], player.ray_dirvectors[9]]; //Store our vectors with "left" in them, INCLUDING THE CENTRAL VECTOR (it's a large face!)
+	    player.left_vertices_names = [player.ray_names[4], player.ray_names[6], player.ray_names[7], player.ray_names[8], player.ray_names[9]];
+	    player.right_vertices = [player.ray_dirvectors[5], player.ray_dirvectors[10], player.ray_dirvectors[11], player.ray_dirvectors[12], player.ray_dirvectors[13]]; //Store our vectors with "top" in them
+	    player.right_vertices_names = [player.ray_names[5], player.ray_names[10], player.ray_names[11], player.ray_names[12], player.ray_names[13]];
+	    
+	    //y axis perpendicular
+	    player.front_vertices = [player.ray_dirvectors[2], player.ray_dirvectors[8], player.ray_dirvectors[9], player.ray_dirvectors[12], player.ray_dirvectors[13]]; //Store our vectors with "front" in them, INCLUDING THE CENTRAL VECTOR (it's a large face!)
+	    player.front_vertices_names = [player.ray_names[2], player.ray_names[8], player.ray_names[9], player.ray_names[12], player.ray_names[13]];
+	    player.back_vertices = [player.ray_dirvectors[3], player.ray_dirvectors[6], player.ray_dirvectors[7], player.ray_dirvectors[10], player.ray_dirvectors[11]]; //Store our vectors with "back" in them
+	    player.back_vertices_names = [player.ray_names[3], player.ray_names[6], player.ray_names[7], player.ray_names[10], player.ray_names[11]];
+	    
+	    //Organise into dict:
+	    player.flat_plane_points = {
+		"x" : player.left_vertices,
+		"-x" : player.right_vertices,
+		"y" : player.back_vertices,
+		"-y" : player.front_vertices
+	    }
+	    player.flat_plane_points_names = {
+		"x" : player.left_vertices_names,
+		"-x" : player.right_vertices_names,
+		"y" : player.back_vertices_names,
+		"-y" : player.front_vertices_names
+	    }
+	    player.flat_plane_points_directions = {
+		"x" : new THREE.Vector3(1,0,0),
+		"-x" : new THREE.Vector3(-1,0,0),
+		"y" : new THREE.Vector3(0,1,0),
+		"-y" : new THREE.Vector3(0,-1,0)
+	    }
+		    
+	    
+	    player.caster = new THREE.Raycaster(); //Use one raycaster, save memory!
+	    
+	    //Player constants:
+	    player.PLATFORM_GRACE = 0.15; //Units above a platform you will hover.
+	    
+	    //Shadows:
+	    player.castShadow = true;
+	    player.receiveShadow = true;
+	    
+	    //Velocity management
+	    /**
+	     * Adjusts the player's velocity for conservation of momentum if player rotates while moving (most noticable on ice sliding)
+	     * @param z_rotation_speed: The angular momentum player is rotating by
+	     */
+	    player.rotateVelocity = function(z_rotation_speed){
+		//Capture old velocities:
+		var old_vel = this.velocity.clone();
+		//Convert to new velocity. NB if we rotate the player clockwise, our velocities are moving ANTICLOCKWISE relatively, hence an inverse angular momentum
+		this.velocity.x = old_vel.x * Math.cos(z_rotation_speed) + old_vel.y * Math.sin(z_rotation_speed); //Rotational matrix. 
+		this.velocity.y = old_vel.y * Math.cos(z_rotation_speed) + -old_vel.x * Math.sin(z_rotation_speed); //For rotational matrices we use -(sin A)  on the second axis
+		this.velocity.z = old_vel.z; //Yep, it's simply (0,0,1) for that rotational matrix!
+	    }
+	    
+	    
+	    /**
+	     * Adjusts the player's base velocity to the platform you are standing on
+	     * @param platformObj: The object you are standing on
+	     */
+	    player.adjustStandingOnVelocity = function (platformObj){
+		//Sanity check the platform has returned its velocity (we have to be nearly in contact with it)
+		if(!platformObj){
+		    return this.standing_on_velocity.clone();
 		}
 		
-		//Check for collisions
-		var collisionResults = this.caster.intersectObjects(target_objects); //See what the outgoing rays hit
-		if ( collisionResults.length > 0 ) { //Means this ray collided, unsurprising given its infinite length!!
-		    var collided_with = collisionResults[0]; //Each collision result contains: { distance, point, face, faceIndex, indices, object }
-		    if(collided_with.distance <= this.PLATFORM_GRACE*5){ //Get close enough, that counts as a collision!
-			//Now we monkey-patch a property onto the collision_result object to see if the item was moving relative to you:
-			var object = collided_with.object;
-			if(excludedObjsIds.indexOf(object.id)!=-1){ //Bail if it's an excluded object (e.g. the ones you are standing on)
-			    return collisions;
-			}
-			var object_velocity = object.velocity;
-			// A collision occurs when:
-			//		ray_direction.x * (player.velocity.x - rot(platform_velocity.x)) > 0		//In which case, set player.velocity.x = rot(platform_velocity.x)
-			// or..		ray_direction.y * (player.velocity.y - rot(platform_velocity.y)) > 0		//In which case, set player.velocity.y = rot(platform_velocity.y)
-			if(object_velocity){
-			    //console.log("Object velocity: "+object_velocity.str());
-			    var object_velocity_rel_player = object_velocity.applyZRotation3(this.rotation.z); 	//Convert the platform's velocity into the player's axis (it'll copy it for us)
-			    //console.log("Rotated object velocity: "+object_velocity_rel_player.str());
-			} else {
-			    var object_velocity_rel_player = 0;
-			}
-			var x_axis_collision = direction_player.x * (player.velocity.x - object_velocity_rel_player.x); 
-			if(x_axis_collision > 0){ //That's a collision in the x axis
-			    player.velocity.x = object_velocity_rel_player.x;
-			    player.standing_on_velocity.x = 0; //Ensures you'll be swiped off if you're also on a moving platform
-			}
-			var y_axis_collision = direction_player.y * (player.velocity.y - object_velocity_rel_player.y)
-			if(y_axis_collision > 0){ //That's a collision in the y axis
-			    player.velocity.y = object_velocity_rel_player.y;
-			    player.standing_on_velocity.y = 0;
-			}
-			//Fire the downstream properties of the thing we collided with
-			if(typeof object.touched !== "undefined"){
-			    object.touched(delta, player, scene);
-			}
-			
-			
-			//Store our collision to return
-			collisions[k].push(collided_with); //Add this into our collision dict 
-			//debugger;
-		    }
+		//Check that this platform has velocity:
+		var plat_vel = platformObj.object.velocity;
+		if(typeof platformObj.object.velocity == "undefined"){ //No velocity stated
+		    plat_vel = new THREE.Vector3(0,0,0); //It has ZERO velocity.
+		} else {
+		    plat_vel = platformObj.object.velocity.clone(); //Copy to thing
 		}
-	    }
-	}
-	
-	return collisions;
-    }
-    
-    
-    /**
-     * Increases nom score:
-     * @param noms_collected: The number of noms just picked up
-     */
-    player.get_nom = function(noms_collected){
-	noms_collected = noms_collected || 1;
-	this.noms += 1;
-	hud.nomCount.text(this.noms);
-    }
-
-    /**
-     * Sets the player's power level to pow
-     * 
-     * @param pow: <int> the power level from 0-3
-     */
-    player.POWER_COLOURS = ["0xAA0000","0xBB8800","0xE0E000","0xEAEAEA"];
-    player.setPower = function(pow){
-	pow = Number(pow);
-	if(isNaN(pow)){ //Sanity check
-	    return this.power_state;
-	}
-	if(pow > 3 || pow < 0){ //Ignore it
-	    return this.power_state;
-	}
-	this.power_state = pow;
-	this.material.color.setHex(this.POWER_COLOURS[pow]);
-	console.log("POWER CHANGE "+pow);
-	
-	//Deactivate shooting if on lowest power
-	if(this.power_state < 1){
-	    hud.currentBallCount.text("0");
-	    hud.maxBallCount.text("0");
-	}else{
-	    hud.currentBallCount.text(maxBallCount - currentBallCount);
-	    hud.maxBallCount.text(maxBallCount);
-	}
-	
-	return this.power_state;
-    }
-    player.set_power = player.setPower; //ALIAS
-    player.power_up = function(increment){ //Powers the player up!!
-	increment = increment || 1;
-	var old_power = this.power_state;
-	
-	//+1 to power
-	var new_power = this.setPower(this.power_state+increment);
-	
-	return (old_power < new_power); //Should return true if power up has happened
-    }
-    
-    /**
-     * Injures the player, if player loses all hit points, drops down a power level
-     * 
-     * @param damage: The amount of hitpoints to deduct from this power state
-     */
-    player.injure = function(damage){
-	this.userData.hp -= damage;
-	if(this.userData.hp <= 0){
-	    if(this.power_state<=0){ //DEATH!!
-		// Drop a hilarious boundy dead body
-                this.body = dropDeadBody(this);
-
-                // Hide the normal model
-                this.visible = false;
-                this.userData.sprite.visible = false;
-
-                // Publish death notification
-                addNotification(this.userData.nickname + " was killed.");
-                deadScreen.show();
-	    } else { //Decrement the power state by 1
-		this.setPower(this.power_state-1);
-		this.userData.hp = 100; //Restore hps for lower power level
+		
+		//Now we must adjust the standing on velocity to suit
+		if(!(plat_vel.x == 0 && plat_vel.y==0 && plat_vel.z ==0 )){
+		    //Rotate the velocities into terms of the character. In the end I had to do this manually ffs.
+		    //this.standing_on_velocity = new THREE.Vector3();
+		    //this.standing_on_velocity.x = plat_vel.x * Math.cos(this.rotation.z) + plat_vel.y * Math.sin(this.rotation.z); //Rotational matrix
+		    //this.standing_on_velocity.y = plat_vel.y * Math.cos(this.rotation.z) + -plat_vel.x * Math.sin(this.rotation.z); //For rotational matrices we use -(sin A)  on the second axis
+		    //this.standing_on_velocity.z = plat_vel.z; //Yep, it's simply (0,0,1) for that rotational matrix!
+		    //Test our new function:
+		    this.standing_on_velocity = plat_vel.applyZRotation3(this.rotation.z); //My own function which does the above
+		    //console.log("Plat_vel: "+plat_vel.x+","+plat_vel.y+","+plat_vel.z+"  Player vel:"+this.standing_on_velocity.x+","+this.standing_on_velocity.y+","+this.standing_on_velocity.z+" @"+this.rotation.z);
+		    //var euler_vel = plat_vel.clone().applyEuler(this.rotation); //This doesn't quite work... why??
+		    //console.log("Euler vel: "+euler_vel.x+","+euler_vel.y+","+euler_vel.z)
+		} else {
+		    this.standing_on_velocity = plat_vel;
+		}
+		return plat_vel;
 	    }
 	    
+	    
+	    //Now build a collision detector:
+	    /**
+	     * Internal collision detector, uses rays which pass from object centre to vertices. Useful for "after the fact" collision detection
+	     * 
+	     * @param otherObjs: The list of objects we are testing a collision for
+	     * 
+	     * @return {
+	     * 		"other_objects" : other_objects we collided with
+	     *		"rays" : dict of ray:distance to contact
+	     *	}
+	     */
+	    player.detectCollision = function(otherObjs){
+		var target_objects = otherObjs || all_collidables; //Default to our all_trees obstacle collection
+		var rays_hit = {}; //Dict of what hit what
+		var other_objects = [];
+		var collision_detected = false;
+		var origin_point = this.position.clone();
+		
+		for (var rayIndex = 0; rayIndex < this.ray_dirvectors.length; rayIndex++){		
+	    			
+	    		//Ray creation for point in space from player's origin
+	    		var ray_name = this.ray_names[rayIndex]; //Human readable name
+	    		var local_ray_dir = this.ray_dirvectors[rayIndex].clone(); //Grab the vector of this ray relative to the player's object 
+	    		var global_ray_dir = local_ray_dir.applyMatrix4( this.matrix ); //Convert into a vector relative to the world map
+	    		var directionVector = global_ray_dir.sub( origin_point ); //Now convert into actual positions in space
+	    		this.caster.set( origin_point, directionVector.clone().normalize() ); //Create a rays eminating from the player's origin out along the vector 
+	    		
+	    		//Now look for collisions
+	    		var collisionResults = this.caster.intersectObjects( target_objects );
+	    		if ( collisionResults.length > 0 && collisionResults[0].distance < directionVector.length() ) { //Means this ray collided!
+	    		    other_objects.push(collisionResults[0].object);
+	    		    var closest_hit_to_centre = collisionResults[0].distance; //The closest point on the ray from origin which hit the object
+	    		    var percentage_distance_hit = closest_hit_to_centre/directionVector.length(); //The percentage distance along the ray to the vertex where contact happened 
+	    		    collision_detected = true;
+	    		    rays_hit[ray_name] = percentage_distance_hit; //Our output dict
+	    		    //console.log("Contact: "+ray_name);
+	    		} else { //Ray did not collide
+	    		}
+	    	    }
+		
+		if(collision_detected){
+		    //console.log(rays_hit);
+		    return {
+			"other_objects" : other_objects,
+			"rays" : rays_hit
+		    };
+		}
+		return false;
+		
+	    }
+	    player.detectCollisions = player.detectCollision; //Alias
+	    
+	    /**
+	     * Detects when you'll collide with something if jumping or falling, so that we can arrest the Z movement by the specified amount
+	     * This stops you jumping and falling through platforms. It'll also ensure you "hover" just over objects rather than collide with them all the time
+	     * Uses rays extending from the object above and below
+	     * 
+	     * @param otherObjs: The list of objects we are testing a collision for
+	     * 
+	     * @return: {
+	     * 			direction: 1 (up) / -1 (down),
+	     * 			shortest: <float>, (the distance down or up (depending on standing/falling or jumping) to the nearest object)
+	     * 			x_gradient: <x_gradient fraction>,
+		    		z_gradient: <z_gradient fraction>,
+	     * 			distances: [<float_dist1>,<float_dist2>,<float_dist3>,<float_dist4>],
+	     * 			vertices: [<vertex1>,<vertex2>,<vertex3>,<vertex4>]
+	     * 			vertices_names: [<vertexname1>,<vertexname2>,<vertexname3>,<vertexname4>]
+	     * 			floor_properties: [<vertex1properties>,<vertex2properties>,<vertex3properties>,<vertex4properties>]
+	     * }
+	     */
+	    player.zCollisionPrediction = function(otherObjs){
+		//Order: leftbackbottom, leftfrontbottom, rightbackbottom, rightfrontbottom
+		//Sanitise inputs
+		var target_objects = otherObjs || all_collidables ; //Default to our all_trees obstacle collection
+		
+		//Determine direction to use
+		if(player.velocity.z>0){ //Player is jumping up
+		    var zVertices = player.top_vertices; //Look up instead
+		    var direction = new THREE.Vector3(0,0,1); //upwards
+		    var vertex_names = player.top_vertices_names;
+		} else { //Standing or falling
+		    var zVertices = player.bottom_vertices; //Default to looking down
+		    var direction = new THREE.Vector3(0,0,-1); //Downwards
+		    var vertex_names = player.bottom_vertices_names;
+		}
+		
+		//Create rays which start at each vertex, then head off downwards or upwards
+		var vertex_collisions = [];
+		var all_floor_properties = []; //Contains the restitution and friction for the floor you are standing on
+		var collided_with_objects = []; //The object you are colliding with
+		var standing_on_ids = [];
+		for(var rayIndex=0; rayIndex < zVertices.length; rayIndex++){ //Only need to test four rays! 
+		    var local_vertex = zVertices[rayIndex].clone(); //Grab the vertex
+		    var global_vertex = local_vertex.applyMatrix4(this.matrixWorld); //Turn into global position
+		    this.caster.set(global_vertex, direction.clone().normalize()); //Set a ray with appropriate direction:
+		    
+		    var collisionResults = this.caster.intersectObjects(target_objects); //See what the outgoing rays hit
+		    if ( collisionResults.length > 0 ) { //Means this ray collided, unsurprising given its infinite length!!
+			var collided_with = collisionResults[0];
+			var ray_distance = collided_with.distance; //The closest point on the ray from origin which hit the object
+			vertex_collisions.push(ray_distance);
+			collided_with_objects.push(collided_with);
+			standing_on_ids.push(collided_with.object.id); //Add its ID into the list of objects you are standing on
+			all_floor_properties.push(collided_with.object.material._physijs); //Allows us to get the friction and restitution of the object! ##HERE##
+		    } else { //No collisions of ray with objects / ground
+			vertex_collisions.push(Infinity);
+			collided_with_objects.push(null);
+			all_floor_properties.push({ //Air effectively!
+			    "friction":0,
+			    "restitution":0,
+			})
+		    }
+		}
+		
+		//Calculate gradient at your feet - NB we do not bother with the PLATFORM_GRACE as it would apply to both
+		var shortest_dist = Math.min.apply(null,vertex_collisions); //Minimum distance of the four points
+		var shortest_vertex_index = vertex_collisions.indexOf(shortest_dist); //Finds which vertex has the shortest path to the object
+		if(shortest_vertex_index==0){ //Depth of the player is flipped with height, remember? (Y -> Z)
+		    var x_grad = (vertex_collisions[2] - shortest_dist)/this.geometry.width;
+		    var y_grad = (vertex_collisions[1] - shortest_dist)/this.geometry.height;
+		} else if(shortest_vertex_index==1){ 
+		    var x_grad = (vertex_collisions[3] - shortest_dist)/this.geometry.width;
+		    var y_grad = (0-(vertex_collisions[0] - shortest_dist))/this.geometry.height;
+		} else if(shortest_vertex_index==2){ 
+		    var x_grad = (0-(vertex_collisions[0] - shortest_dist))/this.geometry.width;
+		    var y_grad = (vertex_collisions[3] - shortest_dist)/this.geometry.height;
+		} else if(shortest_vertex_index==3){ 
+		    var x_grad = (0-(vertex_collisions[1] - shortest_dist))/this.geometry.width;
+		    var y_grad = (0-(vertex_collisions[2] - shortest_dist))/this.geometry.height;
+		}
+		
+		
+		//Use the closest to touching floor item to deduce friction:
+		var floor_properties = all_floor_properties[shortest_vertex_index];
+		var standing_on = null; //Default to not standing on stuff
+		var hit_touchable = null;
+		if(Math.abs(shortest_dist) < 2*player.PLATFORM_GRACE){ //Just come into contact with a platfornm
+		    if(player.velocity.z<=0){ //Standing on it
+	        	    standing_on = collided_with_objects[shortest_vertex_index]; //Resolve what you are standing on
+	        	    //console.log(standing_on);
+		    }
+		    //Add in any traps etc with "touched" methods
+		    if(typeof collided_with_objects[shortest_vertex_index] !== "undefined"){
+			if(typeof collided_with_objects[shortest_vertex_index].object.touched !== "undefined"){
+			    var hit_touchable = collided_with_objects[shortest_vertex_index].object;
+			}
+		    }
+		}
+		
+		
+		return {
+		    "direction": direction.z, //The Z direction (-1 down, +1 up)
+		    "shortest": shortest_dist,
+		    "x_gradient": x_grad,
+		    "y_gradient": y_grad,
+		    "distances": vertex_collisions,
+		    "vertices" : zVertices,
+		    "vertices_names" : vertex_names,
+		    "floor_properties" : floor_properties,
+		    "standing_on" : standing_on,
+		    "standing_on_ids" : standing_on_ids,
+		    "hit_touchable" : hit_touchable
+		};
+	    }
+	    
+	    
+	    /**
+	     * Detects collisions that are about to happen in the x and y direction.
+	     * This allows you to detect when you're about to get shoved by a moving platform
+	     * 
+	     * @param otherObjs: [<object>] A list of objects to test against
+	     * @param excludedObjs: [<object>] A list of objects to ignore (e.g. the ones you are standing on!)
+	     * @param delta: Time since last frame (useful for detecting downstream touched events)
+	     * @return: {
+	     * 		"x" : [<collision_object>,<collision_object>,], //Collisions to the LEFT
+	     * 		"-x" : [<collision_object>,<collision_object>,], //Collisions to the RIGHT
+	     * 		"x" : [<collision_object>,<collision_object>,], //Collisions to the RIGHT
+	     * }
+	     * 
+	     */
+	    player.quickCollisionPrediction = function(otherObjs, excludedObjsIds, delta){
+		//Sanitise inputs
+		var target_objects = otherObjs || all_collidables ; //Default to our all_trees obstacle collection
+		var origin_point = this.position.clone();
+		
+		//Prepare outputs
+		var collisions = {};
+		
+		//console.log("Excluded objs:");
+		//console.log(excludedObjsIds);
+		
+		//Do the ray loop
+		for(var k in this.flat_plane_points){
+		    collisions[k] = []; //Prepare the output
+		    var axis_points = this.flat_plane_points[k];
+		    var axis_points_names = this.flat_plane_points_names[k];
+		    var direction_player = this.flat_plane_points_directions[k];
+		    
+		    for(var rayIndex=0; rayIndex < axis_points.length; rayIndex++){
+			var local_point = axis_points[rayIndex].clone(); //Grab the point on the surface of the player
+			var global_point = local_point.applyMatrix4(this.matrixWorld); //Turn into global position
+			var direction = direction_player.applyZRotation3(-this.rotation.z);
+			this.caster.set(global_point, direction.clone().normalize()); //Set a ray with appropriate direction
+			if(DEBUG){
+			    drawRay(String(rayIndex)+k, global_point, direction.clone().normalize());
+			}
+			
+			//Check for collisions
+			var collisionResults = this.caster.intersectObjects(target_objects); //See what the outgoing rays hit
+			if ( collisionResults.length > 0 ) { //Means this ray collided, unsurprising given its infinite length!!
+			    var collided_with = collisionResults[0]; //Each collision result contains: { distance, point, face, faceIndex, indices, object }
+			    if(collided_with.distance <= this.PLATFORM_GRACE*5){ //Get close enough, that counts as a collision!
+				//Now we monkey-patch a property onto the collision_result object to see if the item was moving relative to you:
+				var object = collided_with.object;
+				if(excludedObjsIds.indexOf(object.id)!=-1){ //Bail if it's an excluded object (e.g. the ones you are standing on)
+				    return collisions;
+				}
+				var object_velocity = object.velocity;
+				// A collision occurs when:
+				//		ray_direction.x * (player.velocity.x - rot(platform_velocity.x)) > 0		//In which case, set player.velocity.x = rot(platform_velocity.x)
+				// or..		ray_direction.y * (player.velocity.y - rot(platform_velocity.y)) > 0		//In which case, set player.velocity.y = rot(platform_velocity.y)
+				if(object_velocity){
+				    //console.log("Object velocity: "+object_velocity.str());
+				    var object_velocity_rel_player = object_velocity.applyZRotation3(this.rotation.z); 	//Convert the platform's velocity into the player's axis (it'll copy it for us)
+				    //console.log("Rotated object velocity: "+object_velocity_rel_player.str());
+				} else {
+				    var object_velocity_rel_player = 0;
+				}
+				var x_axis_collision = direction_player.x * (player.velocity.x - object_velocity_rel_player.x); 
+				if(x_axis_collision > 0){ //That's a collision in the x axis
+				    player.velocity.x = object_velocity_rel_player.x;
+				    player.standing_on_velocity.x = 0; //Ensures you'll be swiped off if you're also on a moving platform
+				}
+				var y_axis_collision = direction_player.y * (player.velocity.y - object_velocity_rel_player.y)
+				if(y_axis_collision > 0){ //That's a collision in the y axis
+				    player.velocity.y = object_velocity_rel_player.y;
+				    player.standing_on_velocity.y = 0;
+				}
+				//Fire the downstream properties of the thing we collided with
+				if(typeof object.touched !== "undefined"){
+				    object.touched(delta, player, scene);
+				}
+				
+				
+				//Store our collision to return
+				collisions[k].push(collided_with); //Add this into our collision dict 
+				//debugger;
+			    }
+			}
+		    }
+		}
+		
+		return collisions;
+	    }
+	    
+	    
+	    /**
+	     * Increases nom score:
+	     * @param noms_collected: The number of noms just picked up
+	     */
+	    player.get_nom = function(noms_collected){
+		noms_collected = noms_collected || 1;
+		this.noms += 1;
+		hud.nomCount.text(this.noms);
+	    }
+	
+	    /**
+	     * Sets the player's power level to pow
+	     * 
+	     * @param pow: <int> the power level from 0-3
+	     */
+	    player.POWER_COLOURS = ["0xAA0000","0xBB8800","0xE0E000","0xEAEAEA"];
+	    player.setPower = function(pow){
+		pow = Number(pow);
+		if(isNaN(pow)){ //Sanity check
+		    return this.power_state;
+		}
+		if(pow > 3 || pow < 0){ //Ignore it
+		    return this.power_state;
+		}
+		this.power_state = pow;
+		this.material.color.setHex(this.POWER_COLOURS[pow]);
+		console.log("POWER CHANGE "+pow);
+		
+		//Deactivate shooting if on lowest power
+		if(this.power_state < 1){
+		    hud.currentBallCount.text("0");
+		    hud.maxBallCount.text("0");
+		}else{
+		    hud.currentBallCount.text(maxBallCount - currentBallCount);
+		    hud.maxBallCount.text(maxBallCount);
+		}
+		
+		return this.power_state;
+	    }
+	    player.set_power = player.setPower; //ALIAS
+	    player.power_up = function(increment){ //Powers the player up!!
+		increment = increment || 1;
+		var old_power = this.power_state;
+		
+		//+1 to power
+		var new_power = this.setPower(this.power_state+increment);
+		
+		return (old_power < new_power); //Should return true if power up has happened
+	    }
+	    
+	    /**
+	     * Injures the player, if player loses all hit points, drops down a power level
+	     * 
+	     * @param damage: The amount of hitpoints to deduct from this power state
+	     */
+	    player.injure = function(damage){
+		this.userData.hp -= damage;
+		if(this.userData.hp <= 0){
+		    if(this.power_state<=0){ //DEATH!!
+			// Drop a hilarious boundy dead body
+	                this.body = dropDeadBody(this);
+	
+	                // Hide the normal model
+	                this.visible = false;
+	                this.userData.sprite.visible = false;
+	
+	                // Publish death notification
+	                addNotification(this.userData.nickname + " was killed.");
+	                deadScreen.show();
+		    } else { //Decrement the power state by 1
+			this.setPower(this.power_state-1);
+			this.userData.hp = 100; //Restore hps for lower power level
+		    }
+		    
+		}
+		// Update the remote player's sprite for the HP changes
+	        updatePlayerSprite(this.userData.id);
+	    }
+	    
+	    /**
+	     * Boosts the player's health by the life amount
+	     * 
+	     * @param life: The amount of hitpoints to recover
+	     */
+	    player.heal = function(life){
+		this.userData.hp += life;
+		if(this.userData.hp > 100.0){
+		    this.userData.hp = 100.0;
+		}
+		// Update the remote player's sprite for the HP changes
+	        updatePlayerSprite(this.userData.id);
+	    }
+	    
+	    
+	    /**
+	     * Respawns the player
+	     */
+	    player.respawn = function(){
+		this.heal(100);
+		this.reset();
+	    }
+	
+	    //Now build a movement anticipator:
+	    /**
+	     * Checks that the last movement is ok, or has cause a collision / made a collision worse
+	     * @param x: the amount Left/Right moved
+	     * @param y: the amount forward/backwards moved
+	     * @param z: the amount up/down moved
+	     * 
+	     * @return: false if movement is ok, decimal for the ray length if it causes a collision
+	     */
+	    player.lastMovementCausesCollision = function(x,y,z){
+		var ray_collisions = this.detectCollision().rays;
+		for(var key in ray_collisions){
+		    var coll_length = ray_collisions[key];
+		    if(key.indexOf("left") !== -1 && x>0){ //Means a leftward movement is causing a collision at the left
+			return coll_length;
+		    }
+		    if(key.indexOf("right") !== -1 && x<0){ //Means a rightward movement is causing a collision at the right
+			return coll_length;
+		    }
+		    if(key.indexOf("back") !== -1 && y>0){ //Means a backward movement is causing a collision at the back
+			return coll_length;
+		    }
+		    if(key.indexOf("front") !== -1 && y<0){ //Means a forward movement is causing a collision at the front
+			return coll_length;
+		    }
+		    if(key.indexOf("top") !== -1 && z>0){ //Means an upward movement is causing a collision at the top
+			return coll_length;
+		    }
+		    if(key.indexOf("bottom") !== -1 && z<0){ //Means a downward movement is causing a collision at the bottom
+			return coll_length;
+		    }
+		}
+		return false; //Otherwise, the movement will not make things worse
+	    }
+	
+	
+	    // Bind handler to detect collisions with own balls -- Doesn't work for detecting collision between player and obstacles
+	    player.addEventListener( 'collision', function( other_object, relative_velocity, relative_rotation, contact_normal ) {
+	        // FYI, `this` has collided with `other_object` with an impact speed of `relative_velocity` and a rotational force of `relative_rotation` and at normal `contact_normal`
+		console.log("Collision detected by PhysiJS");
+	        // Only handle this collision if the object was sourced from this player
+	        if (other_object.userData.sourcePlayerId == playerId) {
+	
+	            // Notify other clients that this ball has been removed from the world
+	            socket.emit('unfire', {
+	                playerId: playerId,
+	                ballId: other_object.userData.ballId
+	            });
+	
+	            // Remove the ball from the scene
+	            deleteBallById(other_object.userData.sourcePlayerId, other_object.userData.ballId);
+	
+	            // Give the player a ball back in their inventory
+	            currentBallCount--;
+	            hud.currentBallCount.text(maxBallCount - currentBallCount);
+	        }
+	        
+	        
+	        //Detect collisions with platforms and floors etc... HERE we will deal with touching platforms etc:
+	        console.log("Player #"+player.id+" touched obj #"+other_object.id);
+	        
+	    });
 	}
-	// Update the remote player's sprite for the HP changes
-        updatePlayerSprite(this.userData.id);
-    }
-    
-    /**
-     * Boosts the player's health by the life amount
-     * 
-     * @param life: The amount of hitpoints to recover
-     */
-    player.heal = function(life){
-	this.userData.hp += life;
-	if(this.userData.hp > 100.0){
-	    this.userData.hp = 100.0;
-	}
-	// Update the remote player's sprite for the HP changes
-        updatePlayerSprite(this.userData.id);
-    }
-    
-    
-    /**
-     * Respawns the player
-     */
-    player.respawn = function(){
-	this.heal(100);
-	this.reset();
-    }
-
-    //Now build a movement anticipator:
-    /**
-     * Checks that the last movement is ok, or has cause a collision / made a collision worse
-     * @param x: the amount Left/Right moved
-     * @param y: the amount forward/backwards moved
-     * @param z: the amount up/down moved
-     * 
-     * @return: false if movement is ok, decimal for the ray length if it causes a collision
-     */
-    player.lastMovementCausesCollision = function(x,y,z){
-	var ray_collisions = this.detectCollision().rays;
-	for(var key in ray_collisions){
-	    var coll_length = ray_collisions[key];
-	    if(key.indexOf("left") !== -1 && x>0){ //Means a leftward movement is causing a collision at the left
-		return coll_length;
-	    }
-	    if(key.indexOf("right") !== -1 && x<0){ //Means a rightward movement is causing a collision at the right
-		return coll_length;
-	    }
-	    if(key.indexOf("back") !== -1 && y>0){ //Means a backward movement is causing a collision at the back
-		return coll_length;
-	    }
-	    if(key.indexOf("front") !== -1 && y<0){ //Means a forward movement is causing a collision at the front
-		return coll_length;
-	    }
-	    if(key.indexOf("top") !== -1 && z>0){ //Means an upward movement is causing a collision at the top
-		return coll_length;
-	    }
-	    if(key.indexOf("bottom") !== -1 && z<0){ //Means a downward movement is causing a collision at the bottom
-		return coll_length;
-	    }
-	}
-	return false; //Otherwise, the movement will not make things worse
-    }
-
-
-    // Bind handler to detect collisions with own balls -- Doesn't work for detecting collision between player and obstacles
-    player.addEventListener( 'collision', function( other_object, relative_velocity, relative_rotation, contact_normal ) {
-        // FYI, `this` has collided with `other_object` with an impact speed of `relative_velocity` and a rotational force of `relative_rotation` and at normal `contact_normal`
-	console.log("Collision detected by PhysiJS");
-        // Only handle this collision if the object was sourced from this player
-        if (other_object.userData.sourcePlayerId == playerId) {
-
-            // Notify other clients that this ball has been removed from the world
-            socket.emit('unfire', {
-                playerId: playerId,
-                ballId: other_object.userData.ballId
-            });
-
-            // Remove the ball from the scene
-            deleteBallById(other_object.userData.sourcePlayerId, other_object.userData.ballId);
-
-            // Give the player a ball back in their inventory
-            currentBallCount--;
-            hud.currentBallCount.text(maxBallCount - currentBallCount);
-        }
-        
-        
-        //Detect collisions with platforms and floors etc... HERE we will deal with touching platforms etc:
-        console.log("Player #"+player.id+" touched obj #"+other_object.id);
-        
-    });
-
     // Player model should cast and receive shadows so they look pretty
     player.castShadow = true;
     player.receiveShadow = true;
@@ -3237,24 +3241,6 @@ function intersectGroundObjs(x, y) {
 }
 
 
-var vertex_names = ["leftbacktop","leftbackbottom","leftfronttop","leftfrontbottom", "rightbackbottom", "rightbacktop", "rightfrontbottom", "rightfronttop"] //xyz in order
-/**
- * An improved collision detection engine which reports what bits of the character collided and how deep in
- * @param specificPlayer
- */
-function playerBoxTouchingObjs(specificPlayer){
-    var p = specificPlayer || player;
-    var vertices = {};
-    
-    //Turn vertices into named points:
-    for (var vertexIndex = 0; vertexIndex < player.geometry.vertices.length; vertexIndex++){
-	vertices[vertex_names[vertexIndex]] = player.geometry.vertices[vertexIndex];
-	
-    }
-    
-    //Create rays  
-    
-}
 
 
 
@@ -3759,7 +3745,7 @@ function moveIfInBounds2(delta, specificPlayer){
         var y_move_slipping = 0;
         to_move = (p.velocity.z + p.standing_on_velocity.z)*delta; //Standing_on_velocity is the platform velocity you are on
         //Use the upwards and downwards rays to see if you are going to hit something between frames, and stop short of it
-        var dist_to_hit = p.zCollisionPrediction(); //Determine when we're gonna hit something. dist_to_hit.shortest is infinity if no collision imminent
+        var dist_to_hit = p.zCollisionPrediction(all_collidables); //Determine when we're gonna hit something. dist_to_hit.shortest is infinity if no collision imminent
         if(p.velocity.z>0){ //Jumping
             if(to_move > dist_to_hit.shortest){ //You're gonna hit your head.
         	to_move = dist_to_hit.shortest; //Stop at head impact
@@ -3833,7 +3819,7 @@ function moveIfInBounds2(delta, specificPlayer){
 	p.translateX(to_move); //Principle movement
 	p.translateZ(z_grad_move); //adjustment for gradient
 	//var collision = playerTouchingObjs(p); //Checks collision against non-ground objects
-        if(p.lastMovementCausesCollision(to_move,0,0)!==false){ //You collided with something in the x direction
+        if(p.lastMovementCausesCollision(to_move,0,0,all_collidables)!==false){ //You collided with something in the x direction
             x_collide = "collision";
             //p.position.copy(oldPos); //Reset position
             p.translateX(-to_move); //Undo the movement
@@ -3856,7 +3842,7 @@ function moveIfInBounds2(delta, specificPlayer){
         p.translateY(to_move); //Forwards (-), Backwards (+)
         p.translateZ(z_grad_move); //adjustment for gradient
         //var collision = playerTouchingObjs(p); //Checks collision against non-ground objects
-        if(p.lastMovementCausesCollision(0,to_move,0)!==false){ //Collided in the y direction
+        if(p.lastMovementCausesCollision(0,to_move,0, all_collidables)!==false){ //Collided in the y direction
             y_collide = "collision";
             //p.position.copy(oldPos); //Reset position
             p.translateY(-to_move);
@@ -3903,7 +3889,8 @@ function moveIfInBounds2(delta, specificPlayer){
     p.__dirtyRotation = true;
    
     //If you have moved, are you still on the ground?
-    jumpingOrFallingPlayerZ(p); //This will soon be replaced by our clever vertical rays
+    //jumpingOrFallingPlayerZ(p); //This will soon be replaced by our clever vertical rays
+    p.adjust_to_stand_on_terrain([ground, hills]); //Player intrinsic method
     
     //Collect any collectables you are touching:
     var hit_collectables = p.detectCollision(all_interactables);

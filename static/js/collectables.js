@@ -105,27 +105,29 @@ SuperMega.resolve_vector = function(x_or_vector, y, z){
  * 
  * @keyword level: The SuperMega.Level scene
  */
-SuperMega.screen = function(level){
+SuperMega.Screen = function(level){
 	
 	//If level, add it
 	this.level = level || null;
 	
 	//Identify our overlays 
 	this.overlays = { //Contains our various overlay screens
-		"skyUnderlay" : $('#pagewrapper');
-		"deadScreen" : $('#respawn');
+		"skyUnderlay" : $('#pagewrapper'),
+		"deadScreen" : $('#respawn')
 	}
 	
 	//Indentify our head-up-displays (huds)
 	this.hud = {
-		"currentBallCount" : $('#hud-ammo .current');
-	    "maxBallCount" : $('#hud-ammo .max');
-	    "nomCount" : $('#hud-noms .current');
-	    "notificationHud" : $('#hud-notifications ul');
+		"currentBallCount" : $('#hud-ammo .current'),
+	    "maxBallCount" : $('#hud-ammo .max'),
+	    "nomCount" : $('#hud-noms .current'),
+	    "notificationHud" : $('#hud-notifications ul')
 	}
 
 }
-
+SuperMega.Screen.prototype = Object.assign( {}, {
+    constructor: SuperMega.Screen
+});
 
 
 
@@ -344,7 +346,7 @@ SuperMega.Player = function (options, scene, hud){
 	//Resolve options:
 	options = options || {};
 	options.local = options.local || true; //If this is the local player or not
-	options.color = options.color || options.colour || this.PLAYER_COLOURS[0];
+	options.color = options.color || options.colour || this.POWER_COLOURS[0];
 	options.mass = options.mass || 0;
 	options.player_id = options.player_id || Math.round(Math.random()*99999); //Give random ID
 	options.nickname = options.nickname || "SuperMega #"+options.player_id;
@@ -361,11 +363,12 @@ SuperMega.Player = function (options, scene, hud){
     var player_geometry = new THREE.CubeGeometry( 1, 1, 2, 1, 1, 1 );
     
     //Super to create the player mesh:
-    Physijs.BoxMesh.call(this, player.geometry, player.material, options.mass);
+    Physijs.BoxMesh.call(this, player_geometry, player_material, options.mass);
     
     //Set variable param-derived properties
     this.scene = scene;
     this.hud = hud;
+    this.nickname = options.nickname;
     this.player_id = options.player_id;
     this.local = options.local;
     
@@ -571,7 +574,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
          *		"rays" : dict of ray:distance to contact
          *	}
          */
-    	var target_objects = otherObjs || [];
+    	var target_objects = otherObjs || []; //TODO: default to scene collidables
     	var rays_hit = {}; //Dict of what hit what
     	var other_objects = [];
     	var collision_detected = false;
@@ -633,7 +636,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
 
 		//Order: leftbackbottom, leftfrontbottom, rightbackbottom, rightfrontbottom
 		//Sanitise inputs
-		var target_objects = otherObjs || []; //Default to our all_trees obstacle collection
+		var target_objects = otherObjs || []; //TODO: Default to scene collidables
 		
 		//Determine direction to use
 		if(this.velocity.z>0){ //Player is jumping up
@@ -740,7 +743,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
          * }
          */
 		//Sanitise inputs
-		var target_objects = otherObjs || []; //Should pass in all collidables 
+		var target_objects = otherObjs || []; //TODO: default to scene collidables. Should pass in all collidables 
 		var origin_point = this.position.clone();
 		
 		//Prepare outputs
@@ -759,7 +762,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
 		    for(var rayIndex=0; rayIndex < axis_points.length; rayIndex++){
 			var local_point = axis_points[rayIndex].clone(); //Grab the point on the surface of the player
 			var global_point = local_point.applyMatrix4(this.matrixWorld); //Turn into global position
-			var direction = direction_this.applyZRotation3(-this.rotation.z);
+			var direction = direction_player.applyZRotation3(-this.rotation.z);
 			this.caster.set(global_point, direction.clone().normalize()); //Set a ray with appropriate direction
 			if(DEBUG){
 			    drawRay(String(rayIndex)+k, global_point, direction.clone().normalize());
@@ -782,18 +785,18 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
 				if(object_velocity){
 				    //console.log("Object velocity: "+object_velocity.str());
 				    var object_velocity_rel_player = object_velocity.applyZRotation3(this.rotation.z); 	//Convert the platform's velocity into the player's axis (it'll copy it for us)
-				    //console.log("Rotated object velocity: "+object_velocity_rel_this.str());
+				    //console.log("Rotated object velocity: "+object_velocity_rel_player.str());
 				} else {
 				    var object_velocity_rel_player = 0;
 				}
-				var x_axis_collision = direction_this.x * (this.velocity.x - object_velocity_rel_this.x); 
+				var x_axis_collision = direction_player.x * (this.velocity.x - object_velocity_rel_player.x); 
 				if(x_axis_collision > 0){ //That's a collision in the x axis
-				    this.velocity.x = object_velocity_rel_this.x;
+				    this.velocity.x = object_velocity_rel_player.x;
 				    this.standing_on_velocity.x = 0; //Ensures you'll be swiped off if you're also on a moving platform
 				}
-				var y_axis_collision = direction_this.y * (this.velocity.y - object_velocity_rel_this.y)
+				var y_axis_collision = direction_player.y * (this.velocity.y - object_velocity_rel_player.y)
 				if(y_axis_collision > 0){ //That's a collision in the y axis
-				    this.velocity.y = object_velocity_rel_this.y;
+				    this.velocity.y = object_velocity_rel_player.y;
 				    this.standing_on_velocity.y = 0;
 				}
 				//Fire the downstream properties of the thing we collided with
@@ -813,16 +816,17 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
 		return collisions;
     },
     
-    lastMovementCausesCollision: function(x,y,z){
+    lastMovementCausesCollision: function(x,y,z,objs){
     	/**
          * Checks that the last movement is ok, or has cause a collision / made a collision worse
          * @param x: the amount Left/Right moved
          * @param y: the amount forward/backwards moved
          * @param z: the amount up/down moved
+         * @param objs: the objects to test collision against
          * 
          * @return: false if movement is ok, decimal for the ray length if it causes a collision
          */
-		var ray_collisions = this.detectCollision().rays;
+		var ray_collisions = this.detectCollision(objs).rays;
 		for(var key in ray_collisions){
 		    var coll_length = ray_collisions[key];
 		    if(key.indexOf("left") !== -1 && x>0){ //Means a leftward movement is causing a collision at the left
@@ -845,6 +849,86 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
 		    }
 		}
 		return false; //Otherwise, the movement will not make things worse
+    },
+    
+    intersects_terrain : function(terrain_objs){
+    	/**
+    	 * Determines if the player is intersecting the terrain, if
+    	 * so return the z (height) below the player where intersection
+    	 * occurs
+    	 * 
+    	 * @param terrain_objs: The list of the solid terrain objects to test against
+    	 * 
+    	 * @return: <float> The z coordinate where the intersection is
+    	 */
+    	terrain_objs = terrain_objs || []; //TODO: pull in from the level
+    	
+    	// Init raycaster
+        var rayLength = 1000,           // look for collisions in a 1000 unit span
+            upperZ = rayLength / 2,     // start 500 units above origin
+            lowerZ = upperZ * -1,       // go 500 units below origin
+            origin = new THREE.Vector3(this.position.x, this.position.y, upperZ), // offset origin at given 2d coords
+            direction = new THREE.Vector3(this.position.x, this.position.y, lowerZ), // ray direction points from top-down
+
+            // Init the ray caster
+            r = new THREE.Raycaster(origin.clone(), direction.clone().sub(origin.clone()).normalize());
+
+        //return r.intersectObjects($.merge([ ground, water, hills ],all_trees), true); //IntersectObjects is an inherent function in THREE.js
+        var intersects = r.intersectObjects(terrain_objs, true);
+        if(intersects.length>0){
+        	return intersects[0].point.z; //Return the Z coordinate of intersect
+        }
+        return null;
+    },
+    
+    adjust_to_stand_on_terrain : function(terrain_objs){
+    	/**
+    	 * Sticks the player to the terrain if they are just about standing on it.
+    	 * Because the terrain is a convoluted mesh (lots of triangles), collision detection
+    	 * involving 4 rays is expensive, so we do it with one.
+    	 * 
+    	 * @param terrain_objs: [] The terrain meshes
+    	 */
+    	
+    	// Attempt to intersect the ground
+        var z = this.intersects_terrain(terrain_objs); //Gets the position of the terrain at player's X & Y
+
+        // If there was an intersection, lock the player z to it
+        if (z != null) {
+            // Apply a 1 unit diff to the position, to accommodate the player model
+            var diff = z - this.position.z + 1 + this.PLATFORM_GRACE; //Work out the difference between player and the ground
+            //console.log("z:"+z+" diff:"+diff);
+            if(this.velocity.z < 0){ //IF player is around abouts on the surface and falling, move to surface and zero falling 
+                if(diff > -this.PLATFORM_GRACE && diff < 15.0){ //Only correct if sinking below ground, or almost touching ground 
+	            	this.translateZ(diff); //Correct onto ground
+	            	this.velocity.z = 0; //Stop falling
+	            	this.isJumping = false; //By definition you are not jumping!
+	            	this.standing = true;
+	            	this.standing_on_velocity = new THREE.Vector3(0,0,0); //The ground is static
+                }
+            }
+
+            // Since players are physics objects, physijs requires this hack
+            this.__dirtyPosition = true;
+            this.__dirtyRotation = true;
+        }
+        
+        return this; //For chaining    	
+    },
+    
+    
+    move_according_to_velocity : function(delta, level){
+    	/**
+    	 * Moves this player according to their internal velocities
+    	 * It's essentially the .animate() function for player!!
+    	 * 
+    	 * @param delta: The time since last frame
+    	 * @param level: The level, from which the terrain and collidables are extracted 
+    	 */
+    	var p = this; //Quick alias
+    	var width = level.world_width*2;
+    	var depth = level.world_depth*2;
+    	//##HERE##
     },
     
 	make_sprite: function(options){
@@ -943,7 +1027,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
         if (this.sprite != null) {
             this.remove(this.sprite);
         }
-        this.sprite = this.make_sprite(this.nickname, this.hp); // Create a new sprite
+        this.sprite = this.make_sprite({"nickname":this.nickname, "hp":this.hp}); // Create a new sprite
         this.sprite.position.set(0, 0, 2); // Offset the sprite above the player
         this.add( this.sprite );  // Add the sprite to the player object
         return this.sprite;
@@ -968,7 +1052,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
 		}
 		
 	    // Assemble the ball key starting pattern
-	    var keyPrefix = 'p'+targetPlayerId+'b';
+	    var keyPrefix = 'p'+this.player_id+'b';
 
 	    // Find balls that belong to the player
 	    for(var i in this.balls) {
@@ -990,7 +1074,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
 	    hud.currentBallCount.text(this.maxBallCount - this.currentBallCount);
 	},
 	
-	setPower : function(pow){
+	set_power : function(pow){
 	    /**
 	     * Sets the player's power level to pow
 	     * 
@@ -1018,7 +1102,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
 		
 		return this.power_state;
 	},
-	set_power : this.setPower, //ALIAS
+	setPower : function(pow){return this.set_power(pow)}, //ALIAS
 	
 	power_up : function(increment){ 
 		/**
@@ -1089,13 +1173,24 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
     	noms_collected = noms_collected || 1;
     	this.noms += 1;
     	this.hud.nomCount.text(this.noms);
-    }
-	
+    },
 
-	
     
-}); //Player inherits BoxMesh
-
+}); 
+Object.defineProperty(SuperMega.Player.prototype, 'userData', {
+    /**
+     * Allows us to fall back to the old userData property
+     */
+	get: function() {
+        return {
+        	"hp" : this.hp,
+        	"id" : this.player_id,
+        	"player_id" : this.player_id,
+        	"nickname" : this.nickname,
+        	"sprite" : this.sprite
+        };
+    }
+});
 
 
 /**
