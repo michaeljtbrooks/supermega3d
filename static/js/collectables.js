@@ -145,17 +145,22 @@ SuperMega.Screen.prototype = Object.assign( {}, {
  * Level.scene:  Our clock
  * 
  */
-SuperMega.Level = function( scene, level_number ){
+SuperMega.Level = function( scene, level_number, options){
     /** Level Constructor
      * @param scene: The Physijs scene we are using
      * @keyword level_number: Will load the specified level number into the scene
+     * @keyword options: {} properties of the level (e.g. world width etc)
      */
     var self=this; //In case I slip into python mode!
+    
+    //Resolve inputs:
+    this.world_width = options.world_width || 64;
+    this.world_depth = options.world_depth || 64;
     
     //Resolve scene
     scene = scene || null;
     if(scene === null){ //Create new scene
-    	scene = new Physijs.Scene({ fixedTimeStep: 1 / 120 });
+    	scene = new Physijs.Scene({ fixedTimeStep: 1 / 60 }); //60 fps is sufficient!
     }
     scene.loaded = false;
     this.scene = scene;
@@ -175,6 +180,7 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
     terrain: [], 	//Surface terrain that we can collide with (ground / hills)
     liquid_terrain: [], //Surface we can pass through (but balls cant)
     debris: [],	//Other items which may exist on the scene but won't be tested in our collision detection
+    the_ends:[], //Easy way of tracking the ends
     //The dict items
     lighting: {}, //The lights
     players: {}, //Players in the scene
@@ -199,7 +205,7 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
 		//First resolve the tracking object
 		var tracker = []; //Blank
 		if(category_name){
-		    var allowed_categories = ["lighting","collidables","interactables","terrain","terrain_liquid","debris","players"];
+		    var allowed_categories = ["lighting","collidables","interactables","terrain","liquid_terrain","debris","players"];
 		    if(allowed_categories.indexOf(category_name)!=-1){
 		    	tracker = this[category_name]; //It's a recognised category
 		    }else{
@@ -967,8 +973,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
     	var p = this; //Quick alias
     	var width = level.world_width*2;
     	var depth = level.world_depth*2;
-    	var all_collidables = level.collidables;
-    	var all_interactables = level.interactables;
+    	var all_collidables = level.collidables; //Things you clip to (can collide with)
+    	var all_interactables = level.interactables; //Things you can pick up
     	var all_terrain = level.terrain;
     	
 	    var to_move = 0; //Throwaway var to remember how much you moved
@@ -1088,7 +1094,6 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
 			    z_grad_move = to_move * dist_to_hit.y_gradient;
 			}
 	        this.translateY(to_move); //Forwards (-), Backwards (+)
-	        if(to_move>0){console.log("Y move: "+to_move);}
 	        this.translateZ(z_grad_move); //adjustment for gradient
 	        //var collision = playerTouchingObjs(p); //Checks collision against non-ground objects
 	        if(this.lastMovementCausesCollision(0,to_move,0, all_collidables)!==false){ //Collided in the y direction
@@ -1501,9 +1506,12 @@ SuperMega.Interactable = function (options){
 	    "rotation_mode" : options.rotation_mode || null,
 	    "translation_mode" : options.translation_mode || null,
 	    "magnitude" : options.magnitude || 0,
-	    "scene" : options.scene || null, //Can pass the scene in for manipulating pickups
+	    "level" : options.level || null, //Can pass the level in for manipulating pickups
 	    "preset" : options.preset || null //Can pass the scene in for manipulating pickups
     };
+    
+    this.level = ops.level; //Track level if passed in at start
+    
     if(ops.preset!=null){
 		//Means replace our objects with the present values
 		var preset = SuperMega.OBJECT_PRESETS[ops.preset] || null;
@@ -1692,19 +1700,19 @@ SuperMega.Interactable.prototype.is_collectable = function(){
     return false;
 }
 
-SuperMega.Interactable.prototype.pickup = function(delta, player, scene){
+SuperMega.Interactable.prototype.pickup = function(delta, player, level){
     /**
      * "Collects" this object if it is collectable. Will start it regenerating if regeneratable
      * @param delta: The time since last frame
      * @param player: The player who is collecting this
-     * @keyword scene: The scene we are operating in (for removing when collected) if not passed in via options
+     * @keyword level: The level we are operating in (for removing item when collected) if not passed in via options
      */
     
     if(!this.is_collectable()){
     	return false;
     }
     
-    scene = scene || null;
+    level = level || null;
     
     //Now deactivate the item:
     this.refractory_clock = 0;
@@ -1714,8 +1722,8 @@ SuperMega.Interactable.prototype.pickup = function(delta, player, scene){
 		this.material.transparent = true;
 		this.material.opacity = 0.5;
     } else { //Does NOT regenerate, ttfo
-	if(scene){ //Remove from scene
-	    scene.remove(this);
+	if(level){ //Remove from scene
+	    level.remove(this, "interactables");
 	} else {
 	    //Otherwise just make contents transparent and deactivate animations etc
 	    this.material.opacity = 0;
@@ -1728,14 +1736,14 @@ SuperMega.Interactable.prototype.pickup = function(delta, player, scene){
     }
 }
 
-SuperMega.Interactable.prototype.collect = function(delta, player, scene){
+SuperMega.Interactable.prototype.collect = function(delta, player, level){
     /**
      * Alias to ensure collect() works consistently
      * @param delta: The time since last frame
      * @param player: The player who is collecting this
-     * @keyword scene: The scene we are operating in (for removing when collected) if not passed in via options
+     * @keyword level: The level we are operating in (for removing when collected) if not passed in via options
      */
-    return this.pickup(delta, player,scene);
+    return this.pickup(delta, player, level);
 }
 
 
@@ -1753,21 +1761,21 @@ SuperMega.Platform = function(options){
     options.color = options.color || options.colour || SuperMega.DEFAULT_COLOURS.platform;
     options.preset = options.preset || null;
     if(options.preset!=null){
-	//Means replace our objects with the present values
-	var preset = SuperMega.OBJECT_PRESETS[options.preset] || null;
-	if(preset){ //Update our options with values from the preset
-	    options = $.extend(options, preset);
-	}else{
-	    console.log("WARNING: Preset '"+options.preset+"' is not a known valid preset name!");
-	}
+		//Means replace our objects with the present values
+		var preset = SuperMega.OBJECT_PRESETS[options.preset] || null;
+		if(preset){ //Update our options with values from the preset
+		    options = $.extend(options, preset);
+		}else{
+		    console.log("WARNING: Preset '"+options.preset+"' is not a known valid preset name!");
+		}
     }
     
 
     //Fix the geometry etc. DEfaults to 10,10,2
     options.geometry = options.geometry || null;
     if(!(options.geometry instanceof THREE.Geometry)){ //User has supplied an array [x,y,z] sizes instead of a geometry object, so create
-	var sizes = options.geometry || options.sizes || [];
-	options.geometry = new THREE.CubeGeometry(sizes[0] || 10, sizes[1] || 10, sizes[2] || 2);
+		var sizes = options.geometry || options.sizes || [];
+		options.geometry = new THREE.CubeGeometry(sizes[0] || 10, sizes[1] || 10, sizes[2] || 2);
     }
     options.material = options.material || Physijs.createMaterial(
                             new THREE.MeshPhongMaterial( {
@@ -1789,18 +1797,18 @@ SuperMega.Platform = function(options){
 }
 SuperMega.Platform.prototype = Object.assign( Object.create(SuperMega.Interactable.prototype), {
     constructor : SuperMega.Platform,
-    touched : function(delta, player, scene){
+    touched : function(delta, player, level){
 	    /**
 	     * Injures the player
 	     * @param delta: The time since last frame
 	     * @param player: The player who is collecting this
-	     * @keyword scene: The scene we are operating in (for removing when collected) if not passed in via options
+	     * @keyword level: The level we are operating in (for removing when collected) if not passed in via options
 	     */
-	    scene = scene || this.ops.scene || null;
+	    level = level || this.ops.level || null;
 	    
 	    //Injure the player:
 	    if(this.inflicts_damage>0){
-		player.injure(this.inflicts_damage*delta);
+	    	player.injure(this.inflicts_damage*delta);
 	    }
     }
 });
@@ -1864,22 +1872,22 @@ SuperMega.Powerup = function(options){
 }
 SuperMega.Powerup.prototype = Object.assign( Object.create(SuperMega.Interactable.prototype), {
     constructor : SuperMega.Powerup,
-    collect : function(delta, player, scene){
+    collect : function(delta, player, level){
 	    /**
 	     * "Collects" this item
 	     * @param delta: The time since last frame
 	     * @param player: The player who is collecting this
-	     * @keyword scene: The scene we are operating in (for removing when collected) if not passed in via options
+	     * @keyword scene: The level we are operating in (for removing when collected) if not passed in via options
 	     */
-	    scene = scene || this.ops.scene || null;
+	    level = level || this.ops.level || null;
 	    
 	    //Power up the player:
 	    if(this.is_collectable()){ //Means the thing can be picked up 
 		//this.active=false;
     		//Pick up the item (remove from scene):
-    		this.pickup(delta, player, scene);
-		player.power_up(1); //Returns true if player has more power headroom
-		player.heal(100); //Ensure player gets their health up
+    		this.pickup(delta, player, level);
+    		player.power_up(1); //Returns true if player has more power headroom
+    		player.heal(100); //Ensure player gets their health up
 	    }
     }
 });
@@ -1914,22 +1922,28 @@ SuperMega.Nom = function(options){
 }
 SuperMega.Nom.prototype = Object.assign( Object.create(SuperMega.Interactable.prototype), {
     constructor: SuperMega.Nom,
-    collect : function(delta, player, scene){
+    collect : function(delta, player, level){
 	    /**
 	     * "Collects" this item
 	     * @param delta: The time since last frame
 	     * @param player: The player who is collecting this
-	     * @keyword scene: The scene we are operating in (for removing when collected) if not passed in via options
+	     * @keyword level: The level we are operating in (for removing when collected) if not passed in via options
 	     */
-	    scene = scene || this.ops.scene || null;
+	    level = level || this.ops.level || null;
 	    
 	    //+1 to the nom
 	    if(this.is_collectable()){ //Means the thing can be picked up 
-		//this.active=false;
-		//Pick up the item (remove from scene):
-		this.pickup(delta, player, scene);
-		player.get_nom(1); //+1 to noms
+			//this.active=false;
+			//Pick up the item (remove from scene):
+			this.pickup(delta, player, level);
+			player.get_nom(1); //+1 to noms
 	    }
+	    
+	    //Update all ends in the level, so that they become active once you have eaten enough noms:
+	    $.each(level.the_ends, function(index, obj){
+	    	obj.update_state(player, level);
+	    });
+	    
     }
 });
 
@@ -1937,7 +1951,13 @@ SuperMega.Nom.prototype = Object.assign( Object.create(SuperMega.Interactable.pr
 
 /**
  * Creates the The End target of a level
- * @param options
+ * @param options {
+ * 		<All the usual above options, plus>
+ * 		nom_threshold: <int> The number of noms which must be collected until this end activates!
+ * }
+ * 
+ * NB: You can build a more original-like End (i.e. trapezium with a hole in it) by using cgs.js
+ * http://evanw.github.io/csg.js/
  */
 SuperMega.TheEnd = function(options){
     options = options || {};
@@ -1991,8 +2011,6 @@ SuperMega.TheEnd = function(options){
     this.geometry.__dirtyVertices = true;
     //   0		1		2		 3			4		5		6		  7	
     //"leftbacktop", "leftbackbottom","leftfronttop","leftfrontbottom", "rightbackbottom", "rightbacktop", "rightfrontbottom", "rightfronttop"
-    console.log("The End");
-    console.log(this);
     
     //End have shadows
     this.castShadow = true;
@@ -2000,35 +2018,49 @@ SuperMega.TheEnd = function(options){
 }
 SuperMega.TheEnd.prototype = Object.assign( Object.create(SuperMega.Interactable.prototype), {
     constructor: SuperMega.TheEnd,
-    touched : function(delta, player, scene){
+    touched : function(delta, player, level){
 	    /**
 	     * Called when you collide with the END
 	     * @param delta: The time since last frame
 	     * @param player: The player who is collecting this
-	     * @keyword scene: The scene we are operating in (for removing when collected) if not passed in via options
+	     * @keyword level: The level we are operating in (for removing when collected) if not passed in via options
 	     */
-	    scene = scene || this.ops.scene || null;
+	    level = level || this.ops.level || null;
 	    
 	    //Call the end if done
 	    if(player.noms >= this.nom_threshold){ //Means it's active 
-		//TODO: Level End routine
+	    	//TODO: Level End routine
+	    	console.log("LEVEL FINISHED!!");
 	    }
     },
-    update_state : function(player, scene){
+    collect : function(delta, player, level){return this.touched(delta,player,level);},
+    update_state : function(player, level){
 	    /**
 	     * Should be called whenever you collect a nom to update the state
 	     * @param delta: The time since last frame
 	     * @param player: The player who is collecting this
-	     * @keyword scene: The scene we are operating in (for removing when collected) if not passed in via options
+	     * @keyword level: The level we are operating in (for removing when collected) if not passed in via options
 	     */
-	    scene = scene || this.ops.scene || null;
+	    level = level || this.ops.level || null;
 	    //Call the end if done
 	    if(player.noms >= this.nom_threshold){ //Means it's active 
 	    	this.state = true; //Active
 	    	this.material.opacity = 1;
+	    	this.material.wireframe = false;
 	    }else{
 	    	this.state = false; //Inactive
 	    	this.material.opacity = 0.4;
+	    	this.material.wireframe = true;
+	    	console.log("End still inactive");
 	    }
+	    var the_end_container = this; //Allows us to grab this in our loop of daughter meshes.
+	    $.each(this.contains, function(index, obj){ //Iterate the daughter meshes (cylinder)
+    		obj.material.opacity = the_end_container.material.opacity;
+    		obj.material.wireframe = the_end_container.material.wireframe;
+    		obj.material.needsUpdate;
+    	});
+	    console.log("Player noms: "+player.noms+"/"+this.nom_threshold);
+	    
+	    this.material.needsUpdate = true; //Ensures the object is re-rendered
     },
 });

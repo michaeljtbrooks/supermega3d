@@ -413,16 +413,17 @@ function init() {
 
     // Scene has to be a Physijs Scene, not a THREE scene so physics work
     scene = new Physijs.Scene({ fixedTimeStep: 1 / 60 });
-    level = new SuperMega.Level(scene); //Scene now held in level too
-    scene.loaded = false; //Holds off events and collision detection until loaded
-    scene.fog = new THREE.Fog( 0xffffff, 1000, FAR );   // Fog is irrelevant
+    level = new SuperMega.Level(scene, 1, {"world_width":worldWidth, "world_depth":worldDepth}); //Scene now held in level too
+    scene.loaded = false;
+    level.loaded = false; //Holds off events and collision detection until loaded
+    level.scene.fog = new THREE.Fog( 0xffffff, 1000, FAR );   // Fog is irrelevant
 
     // Physics - set gravity and update listener
-    scene.setGravity(new THREE.Vector3( 0, 0, -30 ));
-    scene.addEventListener(
+    level.scene.setGravity(new THREE.Vector3( 0, 0, -30 ));
+    level.scene.addEventListener(
         'update',
         function() {
-            scene.simulate( undefined, 1 );
+            level.scene.simulate( undefined, 1 );
             physicsStats.update();
         }
     );
@@ -979,8 +980,8 @@ function createScene(data) {
         var pup = new SuperMega.Powerup({
             "position" : pos,
             "translation" : new THREE.Vector3(0,0,20),
-	    "translation_mode" : "reciprocating",
-	    "magnitude" : 10,
+            "translation_mode" : "reciprocating",
+            "magnitude" : 10,
         });
         all_interactables.push(pup);
         level.add(pup, "interactables");
@@ -1042,10 +1043,12 @@ function createScene(data) {
     var pos = new THREE.Vector3(xPos,yPos,zPos);
     var the_end = new SuperMega.TheEnd({
         "position" : pos,
+        "nom_threshold" : 1 //For resting
     });
     all_interactables.push(the_end); //Ensures we can stand on them and behave as solid objects
     moving_entities.push(the_end); //Ensures they get animated
     level.add(the_end, "interactables");
+    level.the_ends.push(the_end);
     
     
     //
@@ -1836,6 +1839,7 @@ function animate(delta) {
     } else if (!loaded) {
         loaded = true;
         scene.loaded=true; //Need to monkey-patch the scene to know we are loaded!!
+        level.loaded=true;
     }
 
     // Frame flags and speeds based on time delta
@@ -1851,8 +1855,8 @@ function animate(delta) {
 	
 	//Smart motion with velocity:
         //playerMoved = moveIfInBounds(player.velocity.x*delta, player.velocity.y*delta, player.velocity.z*delta) || playerMoved; //Original motion conditionals
-        mu = moveIfInBounds2(delta); //Improved collision detection. Detects if you have collided with something, if so undoes the movement you just did and resets the velocities to suit. Returns the friction coefficient of what you are standing on!
-        //mu = player.move_according_to_velocity(delta, level); //Try out our new player object method... NOT WORKING :-(
+        //mu = moveIfInBounds2(delta); //Improved collision detection. Detects if you have collided with something, if so undoes the movement you just did and resets the velocities to suit. Returns the friction coefficient of what you are standing on!
+        mu = player.move_according_to_velocity(delta, level); //Try out our new player object method... NOT WORKING :-(
     	
     	playerMoved = player.hasMoved; //Monkey patched property
         if(player.hasMoved){ //Quick detection to ensure we don't touch things until properly init
@@ -2765,11 +2769,14 @@ function addTree(x, y, z, rotation) {
     treeLeafBox.position.add(new THREE.Vector3(-0.16796, -0.05714, 4.59859));
 
     // Add the complete tree to the scene
-    level.add(treeContainer, "collidables");
+    level.scene.add(treeContainer, "collidables");
     
     //Make a note of our trees:
     all_trees.push(treeBox); //Trunk
     all_trees.push(treeLeafBox); //Leaves
+    //Manually add the tree hit boxes for collision testing
+    level.collidables.push(treeBox); //Trunk
+    level.collidables.push(treeLeafBox); //Leaves
 }
 
 /**
