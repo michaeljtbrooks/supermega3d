@@ -878,7 +878,7 @@ function createScene(data) {
     // Add the water plane to the scene
     water.castShadow = false;
     water.receiveShadow = true;
-    scene.add(water);
+    level.add(water,"liquid_terrain");
 
 
     //
@@ -904,7 +904,7 @@ function createScene(data) {
     );
  
     // Add the ground to the scene
-    scene.add(ground);
+    level.add(ground, "terrain");
 
 
     //
@@ -921,7 +921,7 @@ function createScene(data) {
     hills = createPlaneFromData(data.hills.data, data.hills.worldWidth, data.hills.worldHeight, data.hills.width, data.hills.height, hillsPhysMaterial, data.hills.multiplier, data.hills.subtractor );
 
     // Add the hills to the scene
-    scene.add(hills);
+    level.add(hills, "terrain");
 
 
     
@@ -983,7 +983,7 @@ function createScene(data) {
 	    "magnitude" : 10,
         });
         all_interactables.push(pup);
-        scene.add(pup);
+        level.add(pup, "interactables");
     }
     
     
@@ -1000,21 +1000,21 @@ function createScene(data) {
             var thing = new SuperMega.Trap({
                 "position" : pos,
                 "translation" : new THREE.Vector3(Math.random()*30-15,Math.random()*30-15,Math.random()*6-3),
-        	"translation_mode" : "reciprocating",
-        	"magnitude" : 100,
+                "translation_mode" : "reciprocating",
+                "magnitude" : 100,
             });
         }else{ //Make a platform
             var thing = new SuperMega.Platform({
                 "position" : pos,
                 "translation" : new THREE.Vector3(Math.random()*30-15,Math.random()*30-15,Math.random()*6-3),
-        	"translation_mode" : "reciprocating",
-        	"magnitude" : 100,
-        	"preset" : "ice_platform"
+                "translation_mode" : "reciprocating",
+                "magnitude" : 100,
+                "preset" : "ice_platform"
             });
         }
         all_platforms.push(thing); //Ensures we can stand on them and behave as solid objects
         moving_entities.push(thing); //Ensures they get animated
-        scene.add(thing);
+        level.add(thing, "collidables");
     }
     
     //
@@ -1030,7 +1030,7 @@ function createScene(data) {
         });
         all_interactables.push(nom); //Ensures we can stand on them and behave as solid objects
         moving_entities.push(nom); //Ensures they get animated
-        scene.add(nom);
+        level.add(nom, "interactables");
     }
     
     //
@@ -1045,7 +1045,7 @@ function createScene(data) {
     });
     all_interactables.push(the_end); //Ensures we can stand on them and behave as solid objects
     moving_entities.push(the_end); //Ensures they get animated
-    scene.add(the_end);
+    level.add(the_end, "interactables");
     
     
     //
@@ -1159,7 +1159,7 @@ function createScene(data) {
 	        
 	        //Remove any straggling bodies:
 	        if(this.body){
-	            scene.remove(this.body);
+	            level.remove(this.body, "debris");
 	        }
 	    }
 	    player.reset();
@@ -1731,7 +1731,7 @@ function createScene(data) {
     player._physijs.collision_masks = CollisionMasks.PLAYER;
 
     // Add the player to the scene
-    scene.add( player );
+    level.add( player, "players", player.player_id );
 
     // Init the player's sprite
     updatePlayerSprite(playerId);
@@ -1852,16 +1852,18 @@ function animate(delta) {
 	//Smart motion with velocity:
         //playerMoved = moveIfInBounds(player.velocity.x*delta, player.velocity.y*delta, player.velocity.z*delta) || playerMoved; //Original motion conditionals
         mu = moveIfInBounds2(delta); //Improved collision detection. Detects if you have collided with something, if so undoes the movement you just did and resets the velocities to suit. Returns the friction coefficient of what you are standing on!
-        playerMoved = player.hasMoved; //Monkey patched property
+        //mu = player.move_according_to_velocity(delta, level); //Try out our new player object method... NOT WORKING :-(
+    	
+    	playerMoved = player.hasMoved; //Monkey patched property
         if(player.hasMoved){ //Quick detection to ensure we don't touch things until properly init
             player.ready = true;
         }
         
         //Calculate traction. This is linked to friction, but capped by your ability to push off,
-        if(mu>0.5 || mu < 0.01){ //Keep traction sensible!
-            var traction = 1;
+        if(mu>0.5 || mu < 0.01){ //Keep traction sensible! NB traction = mu*2, thus mu of 0.5 or more gives full traction
+            traction = 1;
         } else { 
-            var traction = mu*2;
+            traction = mu*2;
         }
 	
         // Move forward
@@ -2279,6 +2281,8 @@ function onMouseUp(event) {
 
 /**
  * Adds a REMOTE player to the world
+ * TODO: Convert to using the SuperMega.player object
+ * 
  * @param data - Player data
  */
 function addPlayer(data) {
@@ -2438,7 +2442,7 @@ function deletePlayer(id) {
     if (p != null) {
 
         // Remove the player from the scene
-        scene.remove(players[id]);
+        level.remove(players[id], "players", id);
 
         // Clear out the player object from the collection
         players[id] = null;
@@ -2579,7 +2583,7 @@ function addBall(position, force, restitution, playerId, color, ballId) {
     ball._physijs.collision_masks = CollisionMasks.BALL;
 
     // Put the ball in the world
-    scene.add( ball );
+    level.add( ball, "debris");
 
     // Update matrices
     ball.updateMatrixWorld();
@@ -2761,7 +2765,7 @@ function addTree(x, y, z, rotation) {
     treeLeafBox.position.add(new THREE.Vector3(-0.16796, -0.05714, 4.59859));
 
     // Add the complete tree to the scene
-    scene.add(treeContainer);
+    level.add(treeContainer, "collidables");
     
     //Make a note of our trees:
     all_trees.push(treeBox); //Trunk
@@ -2842,7 +2846,7 @@ function addPlatform(x, y, z, rotation, ice) {
     
     
     //Check our supermega.platform obj works:
-    platformObj = new SuperMega.Platform({
+    var platformObj = new SuperMega.Platform({
 	"material":platformMat,
 	"geometry":platformGeo,
 	"mass" : 0,
@@ -2852,60 +2856,14 @@ function addPlatform(x, y, z, rotation, ice) {
     
 
     
-    // Add the complete tree to the scene
-    scene.add(platformObj);
+    // Add the complete platform  to the scene
+    level.add(platformObj, "collidables");
     
     //Make a note of our platforms in the collision list:
     all_platforms.push(platformObj); //platform, abusing trees for now
     
     return platformObj;
     
-    
-        // Parent container which holds hit boxes and tree model
-    var platformObj = new Physijs.BoxMesh(
-            platformGeo,
-            platformMat,
-            0 //Massless i.e. fixed
-        );
-
-    
-    //Ensure a floating platform starts with no velocity:
-    platformObj.velocity = new THREE.Vector3(0,0,0);
-    
-    // Assign physics collision type and masks to both hit boxes so only specific collisions apply (currently the same as trees)
-    platformObj._physijs.collision_type = CollisionTypes.TREE;
-    platformObj._physijs.collision_masks = CollisionMasks.TREE;
-
-    // Apply the given location to the tree container
-    platformObj.position = new THREE.Vector3(xPos, yPos, zPos);
-    
-    // Apply the rotation
-    if(rotation!=null){
-	platformObj.rotation.x = rotation.x;
-	platformObj.rotation.y = rotation.y;
-	platformObj.rotation.z = rotation.z;
-	//console.log("Platform rotation provided: "+rotation.str());
-    } else {
-	var x_rotation_amt = (Math.random()-0.5) * 0.2 * Math.PI; //Tilt 
-	platformObj.rotation.x = x_rotation_amt; //remaining gravity flat
-	var y_rotation_amt = (Math.random()-0.5) * 0.2 * Math.PI;
-	platformObj.rotation.y = y_rotation_amt; //remaining gravity flat
-	var z_rotation_amt = Math.random() * Math.PI;
-	platformObj.rotation.z = z_rotation_amt; //remaining gravity flat
-	//console.log("Platform rotation randomised: "+platformObj.rotation.str());
-    }
-    
-    //Platforms have shadows (receiving shadows v important for knowing when player above a platform!!)
-    platformObj.castShadow = true;
-    platformObj.receiveShadow = true;
-
-    // Add the complete tree to the scene
-    scene.add(platformObj);
-    
-    //Make a note of our platforms in the collision list:
-    all_platforms.push(platformObj); //platform, abusing trees for now
-    
-    return platformObj;
 }
 
 /**
@@ -3082,7 +3040,7 @@ function addMovingPlatform(options) {
     moving_entities.push(platformObj);
     all_platforms.push(platformObj); //Will clip like a platform now!
     
-    scene.add(platformObj);
+    level.add(platformObj, "collidables");
     //console.log("Moving platform:");
     //console.log(platformObj);
     return platformObj;
@@ -3471,7 +3429,7 @@ function drawLine(v1, v2) {
  */
 function deleteBalls() {
     for(var i in balls) {
-        scene.remove(balls[i]);
+        level.remove(balls[i], "debris");
         balls[i] = null;
         delete balls[i];
     }
@@ -3490,7 +3448,7 @@ function deleteBallById(playerId, ballId) {
 
     // Check if the ball exists and remove it if it exists
     if (balls[key] != null) {
-        scene.remove(balls[key]);
+        level.remove(balls[key], "debris");
         balls[key] = null;
         delete balls[key];
     }
@@ -3511,7 +3469,7 @@ function deletePlayerBalls(targetPlayerId) {
 
         // If the ball's id matches the starting pattern, delete the ball
         if (i.substr(0, keyPrefix.length) == keyPrefix) {
-            scene.remove(balls[i]);
+            level.remove(balls[i], "debris");
             balls[i] = null;
             delete balls[i];
 
@@ -3980,7 +3938,7 @@ function dropDeadBody(targetPlayer) {
     body.position.copy(targetPlayer.position);
 
     // Add the body to the world and let the hilarity commence
-    scene.add( body );
+    level.add( body, "debris" );
     
     return body;
 }

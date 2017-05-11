@@ -154,7 +154,7 @@ SuperMega.Level = function( scene, level_number ){
     
     //Resolve scene
     scene = scene || null;
-    if(scene == null){ //Create new scene
+    if(scene === null){ //Create new scene
     	scene = new Physijs.Scene({ fixedTimeStep: 1 / 120 });
     }
     scene.loaded = false;
@@ -174,6 +174,7 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
     interactables: [], //The things which move or we can interact with
     terrain: [], 	//Surface terrain that we can collide with (ground / hills)
     liquid_terrain: [], //Surface we can pass through (but balls cant)
+    debris: [],	//Other items which may exist on the scene but won't be tested in our collision detection
     //The dict items
     lighting: {}, //The lights
     players: {}, //Players in the scene
@@ -194,28 +195,58 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
 		 */
 		category_name = category_name || null;
 		index_name = index_name || null;
+	    
+		//First resolve the tracking object
+		var tracker = []; //Blank
 		if(category_name){
-		    var allowed_categories = ["lighting","collidables","interactables","terrain","terrain_liquid"];
+		    var allowed_categories = ["lighting","collidables","interactables","terrain","terrain_liquid","debris","players"];
 		    if(allowed_categories.indexOf(category_name)!=-1){
-			var tracker = this[category_name];
-			if(typeof tracker.push !== "undefined"){ //It's an array
-			    tracker.push(obj); //Add the object to our tracking vars
-			} else { //It's a dict
-			    if(index_name){ //Add to tracker
-				tracker[index_name] = obj;
-			    }else{
-				console.log("WARNING: '"+category_name+"' is dict-based and requires an index name as well as a category_name. No index_supplied.");
-				this.unsorted.push(obj);
-			    }
-			}
+		    	tracker = this[category_name]; //It's a recognised category
 		    }else{
-			console.log("WARNING: '"+category_name+"' is not a valid SuperMega scene category name, choose one of: "+allowed_categories.toString());
-			this.unsorted.push(obj);
+		    	tracker = this.unsorted; //Default to unsorted category 
+		    	console.log("WARNING: '"+category_name+"' is not a valid SuperMega scene category name, choose one of: "+allowed_categories.toString());
 		    }
-		}else{
+		} else {
 		    console.log("WARNING: item #"+obj.id+" '"+obj.name+"' has not been added to a tracking category.");
-		    this.unsorted.push(obj);
+		    tracker = this.unsorted;
 		}
+		
+		//Now perform the relevant action on it:
+		if(typeof tracker.push !== "undefined"){ //It's an array
+			var obj_index = null;
+	    	if(action=="remove"){ //Grab the index if we are wanting to remove this object
+		    	obj_index = tracker.indexOf(obj);
+	    	}
+			if(action=="add"){
+		    	tracker.push(obj); //Add the object to our tracking vars
+		    } else if(action=="remove"){
+		    	if (obj_index > -1) {
+		    	    tracker.splice(obj_index, 1); //Remove the item
+		    	}
+		    }
+		} else { //It's a dict
+		    if(action=="add"){
+				if(index_name){ //Add to tracker
+			    	tracker[index_name] = obj;
+			    } else { //Failed to supply an index_name, so it's going in the unsorted bin
+			    	console.log("WARNING: '"+category_name+"' is dict-based and requires an index name as well as a category_name. No index_supplied, adding to unsorted.");
+			    	this.unsorted.push(obj);
+			    }
+		    } else if(action=="remove") {
+		    	if(index_name){ //Add to tracker
+			    	delete tracker[index_name];
+			    } else {  //Failed to supply an index_name, so it's being removed from the unsorted bin
+			    	var obj_index = this.unsorted.indexOf(obj);
+			    	console.log("WARNING: '"+category_name+"' is dict-based and requires an index name as well as a category_name. No index_supplied, removing item from unsorted.");
+			    	if(obj_index > -1){
+			    		this.unsorted.splice(obj_index, 1); //Remove it!
+			    	} else {
+			    		console.log("WARNING: attempted to remove item from unsorted items failed (unable to find in unsorted). Please provide an index_name");
+			    	}
+			    }
+		    }
+		}
+		
 		//And add to / remove from the scene:
 		this.scene[action](obj);
     },
@@ -390,7 +421,14 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
     //Constants:
     POWER_COLOURS: ["0xAA0000","0xBB8800","0xE0E000","0xEAEAEA"],
     PLATFORM_GRACE: 0.15, //How close you need to be to the platform to be regarded as "standing on it"
-
+    
+    POWER_STATES: {
+	    "jump" : [50,55,60,65],
+	    "move" : [MOVE_SPEED*1.0, MOVE_SPEED*1.2, MOVE_SPEED*1.4, MOVE_SPEED*1.6],
+	    "shoot" : [1,2,3,4],
+	    "max_gradient" : [1.0,1.3,1.6,1.9],
+    },
+    
 	//Initialise variables:
 	body: false, //When the patient dies adds a dead body to the scene
 	noms: 0, //Number of noms collected
@@ -400,6 +438,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
     currentBallCount: 0, //Number of balls in play
     maxBallCount: 0, //Number of balls allowed in play in total
     standing_on_velocity: null, //The velocity of the platform you are standing on
+    mu: 0.5, //The friction of the surface you are standing on
     
     
     //Ray storers
@@ -639,14 +678,14 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
 		var target_objects = otherObjs || []; //TODO: Default to scene collidables
 		
 		//Determine direction to use
+		var zVertices = this.bottom_vertices; //Default to looking down
+	    var direction = new THREE.Vector3(0,0,-1); //Downwards
+	    var vertex_names = this.bottom_vertices_names;
 		if(this.velocity.z>0){ //Player is jumping up
-		    var zVertices = this.top_vertices; //Look up instead
-		    var direction = new THREE.Vector3(0,0,1); //upwards
-		    var vertex_names = this.top_vertices_names;
+			zVertices = this.top_vertices; //Look up instead
+			direction = new THREE.Vector3(0,0,1); //upwards
+		    vertex_names = this.top_vertices_names;
 		} else { //Standing or falling
-		    var zVertices = this.bottom_vertices; //Default to looking down
-		    var direction = new THREE.Vector3(0,0,-1); //Downwards
-		    var vertex_names = this.bottom_vertices_names;
 		}
 		
 		//Create rays which start at each vertex, then head off downwards or upwards
@@ -928,7 +967,221 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
     	var p = this; //Quick alias
     	var width = level.world_width*2;
     	var depth = level.world_depth*2;
-    	//##HERE##
+    	var all_collidables = level.collidables;
+    	var all_interactables = level.interactables;
+    	var all_terrain = level.terrain;
+    	
+	    var to_move = 0; //Throwaway var to remember how much you moved
+	    var z_grad_move = 0; //Adjustments of Z in response to a gradient
+        
+	    //Tracking old positions
+	    var oldPos = p.position.clone() //We need to update this with every movement
+	    var preMovePos = p.position.clone() //We need to update this with every movement
+	    
+	    var x_collide = "",
+	    	y_collide = "",
+	    	z_collide = "";
+	    
+	    //When it comes to the flat plane, maximum gradients apply:
+	    var max_grad = this.POWER_STATES.max_gradient[this.power_state]; //The max gradient you can tolerate depends on your power!
+		
+	    
+	    //Move player to new position:
+	    this.hasMoved = false;
+	    if(this.mass==0){ //Use Mike's translations engine
+	    	//UP/DOWN: Z - First deal with the more complex up/down direction
+	        this.standing = false;
+	        var x_move_slipping = 0;
+	        var y_move_slipping = 0;
+	        to_move = (this.velocity.z + this.standing_on_velocity.z)*delta; //Standing_on_velocity is the platform velocity you are on
+	        //Use the upwards and downwards rays to see if you are going to hit something between frames, and stop short of it
+	        var dist_to_hit = this.zCollisionPrediction(all_collidables); //Determine when we're gonna hit something. dist_to_hit.shortest is infinity if no collision imminent
+	        if(this.velocity.z>0){ //Jumping
+	            if(to_move > dist_to_hit.shortest){ //You're gonna hit your head.
+		        	to_move = dist_to_hit.shortest; //Stop at head impact
+		        	this.velocity.z = 0; //Set velocity to zero
+		        	player.jump_keydown_continuously = false; //Null off the persistent space press
+		        	this.standing = false;
+		        	if(dist_to_hit.hit_touchable){
+		        	    dist_to_hit.hit_touchable.touched(delta, p, level); //Detect whacking head on trap
+		        	}
+	            }//Z
+	        } else { //Falling or walking
+	            if(-to_move > (dist_to_hit.shortest - this.PLATFORM_GRACE)){ //You're gonna land on your feet (NB to_move is vector, dist_to_hit is scalar!)
+		        	//LANDING ON A PLATFORM
+		        	to_move = -1 * (dist_to_hit.shortest - this.PLATFORM_GRACE); //Stop just a smidgen before your feet touch the platform
+		        	this.standing=true;
+		        	this.isJumping = false;
+		        	player.jump_keydown_continuously = false; //Null off the persistent space press
+		        	if(dist_to_hit.hit_touchable){
+		        	    dist_to_hit.hit_touchable.touched(delta, p, level); //Detect whacking head on trap
+		        	}
+	            }// Z
+	            if(dist_to_hit <= this.PLATFORM_GRACE){ //The definition of standing is if you are perched at the grace distance above a platform
+		        	//STANDING ON A PLATFORM
+		        	this.standing = true;
+		        	//this.adjustStandingOnVelocity(dist_to_hit.standing_on); //Adjust our standing velocity
+		        	this.isJumping = false;
+		        	if(dist_to_hit.hit_touchable){
+		        	    dist_to_hit.hit_touchable.touched(delta, p, level); //Detect whacking head on trap
+		        	}
+	            }
+	            //SLIPPING CODE: Now, check to see if our gradient is actually safe:
+	            if(this.standing && (Math.abs(dist_to_hit.x_gradient) > max_grad || Math.abs(dist_to_hit.y_gradient) > max_grad) ){ //Sorry, you're just too slippy!
+	            	this.standing = false; //This will just boost the z velocity,
+	            } else if(this.standing) { //We've hit a platform, Gradient is ok, so we can arrest the fall on this platform
+		        	//LANDING ON A PLATFORM which is not too steep
+		        	this.velocity.z = 0; //Set velocity to zero
+		        	this.adjustStandingOnVelocity(dist_to_hit.standing_on); //Adjust our standing velocity to match the platform if the platform is moving
+	            }
+	            //console.log(dist_to_hit.x_gradient+"/"+dist_to_hit.y_gradient+" max:"+max_grad);
+	        }
+	        this.translateZ(to_move); //Jumping (+) / falling (-)
+	        //Check that this move has not caused a collision with a collidable
+	        if(this.lastMovementCausesCollision(0,0,to_move,all_collidables)!==false){ //Collided in the z direction
+	            z_collide = "collision";
+	            //this.position.copy(oldPos); //Reset position
+	            this.translateZ(-to_move);
+	            this.velocity.z = 0; //Kill movement
+	            this.isJumping = false; //Allows player to use space again!
+	            //this.standing = false;
+	        }else{
+	            this.hasMoved=true;
+	        }// Z
+	        
+	        
+	        //Now detect any imminent collisions in the left/right/forwards/backwards plane
+	        var horizontal_collisions = player.quickCollisionPrediction(all_collidables, dist_to_hit.standing_on_ids, delta); //Second property is the stuff you are standing on
+	        
+			//LEFT/RIGHT: X, did they collide?
+			oldPos = this.position.clone() //We need to update this with every movement
+			to_move = (this.velocity.x + this.standing_on_velocity.x)*delta + x_move_slipping; //Player_velocity + platform_velocity + velocity from slope slippage
+			z_grad_move = 0; //Default to nil movement
+			if(dist_to_hit.x_gradient > -3 && dist_to_hit.x_gradient < 3){ //We have a legit gradient here
+			    if(Math.abs(dist_to_hit.x_gradient) >= max_grad){ //Too steep, SLIDE!!
+			    	this.standing=false;
+			    	//TODO: Implement sliding
+			    }
+			    z_grad_move = to_move * dist_to_hit.x_gradient; 
+			}
+			this.translateX(to_move); //Principle movement
+			this.translateZ(z_grad_move); //adjustment for gradient
+			//Checks collision against non-ground objects
+	        if(this.lastMovementCausesCollision(to_move,0,0,all_collidables)!==false){ //You collided with something in the x direction
+	            x_collide = "collision";
+	            //this.position.copy(oldPos); //Reset position
+	            this.translateX(-to_move); //Undo the movement
+	            this.translateZ(-z_grad_move); //Undo adjustment for gradient
+	            this.velocity.x = 0; //Kill movement in that direction
+	        } else {
+	            this.hasMoved = true;
+	        }
+	        
+	        //FORWARDS/BACKWARDS: Y
+	        oldPos = this.position.clone() //We need to update this with every movement
+	        to_move = (this.velocity.y + this.standing_on_velocity.y)*delta + y_move_slipping;
+	        z_grad_move = 0; //Default to nil movement
+			if(dist_to_hit.y_gradient > -3 && dist_to_hit.y_gradient < 3){ //We have a legit gradient here
+			    if(Math.abs(dist_to_hit.y_gradient) >= max_grad){ //Too steep, SLIDE!!
+			    	this.standing=false;
+			    }
+			    z_grad_move = to_move * dist_to_hit.y_gradient;
+			}
+	        this.translateY(to_move); //Forwards (-), Backwards (+)
+	        if(to_move>0){console.log("Y move: "+to_move);}
+	        this.translateZ(z_grad_move); //adjustment for gradient
+	        //var collision = playerTouchingObjs(p); //Checks collision against non-ground objects
+	        if(this.lastMovementCausesCollision(0,to_move,0, all_collidables)!==false){ //Collided in the y direction
+	            y_collide = "collision";
+	            //this.position.copy(oldPos); //Reset position
+	            this.translateY(-to_move);
+	            this.translateZ(-z_grad_move); //Undo adjustment for gradient
+	            this.velocity.y = 0; //Kill movement in that direction
+	        } else {
+	            this.hasMoved = true;
+	        }
+	        
+	        //TODO: add support for stepup = catching the very bottom of your foot on a platform is as good as stepping onto it
+	        //if(collision=="stepup"){ //Only the bottom of your character collided gently with a platform, so step onto it
+	        if(0){
+	            this.velocity.z = 0; //Kill movement in that direction
+	            z_collide = collision.contact_type;
+	            this.translateZ(1*collision.stepup_amount); //Do not undo the movement, just adjust the z position
+	    	    this.isJumping = false;
+	    	    this.standing = true;
+	    	    this.hasMoved = true;
+	    	}
+	    }else{ //Mass > 0 
+			//Use Physijs forces. This will do all the collision and rebound detection for us
+			//Player has mass, so apply a force to centre of gravity 
+			var force = new THREE.Vector3(xTranslation, yTranslation, zTranslation);
+			this.applyCentralImpulse(force);
+	    }
+	    
+	    
+	    //Have you moved out of bounds?
+	    if (!isBetween(this.position.x, -width, width) ||
+	        !isBetween(this.position.y, -depth, depth)) {
+	        // Revert and report movement failure
+	        this.standing_on_velocity = new THREE.Vector3(0,0,0); //Null movement
+	        this.velocity.x = 0;
+	        this.velocity.y = 0;
+	        this.position.x = preMovePos.x;
+	        this.position.y = preMovePos.y;
+	        this.hasMoved = false;
+	        //NB: do not zero the z velocity!!
+	    }
+	
+	    
+	    //Update physi.js
+	    this.__dirtyPosition = true;
+	    this.__dirtyRotation = true;
+	   
+	    //If you have moved, are you still on the ground?
+	    //jumpingOrFallingPlayerZ(p); //This will soon be replaced by our clever vertical rays
+	    this.adjust_to_stand_on_terrain(all_terrain); //Player intrinsic method
+	    
+	    //Collect any collectables you are touching:
+	    var hit_collectables = this.detectCollision(all_interactables);
+	    if(hit_collectables && level.loaded && player.ready){
+			console.log("Hit pickup!!")
+			var already_hit = [];
+			$.each(hit_collectables.other_objects, function(){
+			    if(already_hit.indexOf(this)==-1){ //Prevent double-collision issues
+			    	this.collect(delta, player, level); //Collect this object!
+			    	already_hit.push(this);
+			    }
+		    });
+	    }
+	    
+	    
+	    //Horizontal velocity decay: //TODO: viscous fluids - e.g. drags through water
+	    var mu = 0.5; //Standard friction of ground
+	    if(dist_to_hit.shortest < 2*this.PLATFORM_GRACE) { //Only apply friction if we're actually standing on the platform!!
+	        var mu = dist_to_hit.floor_properties.friction; //Returned from our player.zCollisionPrediction()
+	        if(mu<=0 || mu > 10){
+	    		mu = 0.5;
+	        }
+	    }
+	    //Perform self-initiated velocity decay
+	    this.velocity.x = this.velocity.x - (this.velocity.x * 20.0 * mu * delta);
+	    this.velocity.y = this.velocity.y - (this.velocity.y * 20.0 * mu * delta);
+	
+	    //Gravity!! - only if not standing
+	    if(!this.standing){
+	    	this.velocity.z -= 9.8 * 10.0 * delta; // 10.0 = mass
+	    }
+	
+	    //Debug stats:
+	    var collisiondata = "Clip X:"+x_collide+", Y:"+y_collide+", Z:"+z_collide+""
+	    var playerrot = "Player rot: "+this.rotation.x.toFixed(2)+","+this.rotation.y.toFixed(2)+","+this.rotation.z.toFixed(2)+"("+(this.rotation.z*(180/Math.PI)).toFixed(1)+")";
+	    var playerpos = "Player pos: "+this.position.x.toFixed(2)+","+this.position.y.toFixed(2)+","+this.position.z.toFixed(2);
+	    var playervel = "Player vel: "+this.velocity.x.toFixed(2)+","+this.velocity.y.toFixed(2)+","+this.velocity.z.toFixed(2);
+	    $('#debug-stats').html(collisiondata+"<br/>"+playerrot+"<br/><br/>"+playerpos+"<br/>"+playervel+"<br/>µ:"+mu+", PlatformVel: "+this.standing_on_velocity.x+","+this.standing_on_velocity.y+","+this.standing_on_velocity.z);
+	    
+	    //Return the friction so the rest of our engine can use it.
+	    this.mu = mu;
+	    return mu;
     },
     
 	make_sprite: function(options){
