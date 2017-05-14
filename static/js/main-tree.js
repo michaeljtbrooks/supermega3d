@@ -5,7 +5,7 @@
  *
  * @author Kevin Fitzgerald / @kftzg / http://kevinfitzgerald.net
  * @author Dr Michael Brooks / @michaeljtbrooks
- * Last Updated: 2017-04-23 22:12 UTC 
+ * Last Updated: 2017-05-14 15:50 UTC 
  *
  * Copyright 2013 Kevin Fitzgerald + 2017 Michael Brooks
  *
@@ -1083,12 +1083,18 @@ function createScene(data) {
         }
 
     // Drop trees where the server said to do so
+    console.log("Adding trees:");
+    console.log(level.collidables); //See what we've got
     for(var i in data.trees) {
-        addTree(data.trees[i].x, data.trees[i].y, null, data.trees[i].rotation);
+        level.add_tree({
+                "position" : {"x":data.trees[i].x, "y":data.trees[i].y, "z":null},
+                "rotation" : {"x":null, "y":null, "z":data.trees[i].rotation}
+        });
     }
+    console.log(level.collidables); //See what we've got
     
     //Store the collidable entities:
-    all_collidables = $.merge(all_platforms, all_trees);
+    //all_collidables = $.merge(all_platforms, all_trees);
 
     
     
@@ -3072,6 +3078,7 @@ function moveIfInBounds(xTranslation, yTranslation, zTranslation) {
  * @param delta: The time period between frames
  */
 function moveIfInBounds2(delta, specificPlayer){
+    console.log("OBSOLETED!!!! :-[");
     //The big gotcha here is that player.position.y is aligned to the map grid
     //player.velocity.y is aligned to the player!! 
     //So we resolve this by using translateX, which works out your new position depending on your direction.

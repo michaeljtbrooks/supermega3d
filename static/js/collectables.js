@@ -7,7 +7,7 @@
  *     These are items you can touch and interact with
  * 
  * @author Dr Michael Brooks / @michaeljtbrooks
- * Last Updated: 2017-04-28 20:12 UTC 
+ * Last Updated: 2017-05-14 15:50 UTC 
  */
 
 //Expanding on THREEjs:
@@ -47,7 +47,7 @@ SuperMega.DEFAULT_COLOURS = {
     "magic_switch" : 0xDDDDDD,
     "the_end" : 0x8316FF,
     "nom" : 0x33EEFF,
-}
+};
 
 //Our presets:
 SuperMega.OBJECT_PRESETS = {
@@ -58,7 +58,50 @@ SuperMega.OBJECT_PRESETS = {
             "friction": .1, //v low friction
             "restitution": .4 //low restitution
     }
-}
+};
+
+
+//Collisions:
+//Constants:
+// Bitwise flags for elements that can collide (for ammo.js / bullet)
+SuperMega.CollisionTypes = {
+    NOTHING: 0,
+    BALL: 1,
+    PLAYER: 2,
+    TREE: 4,
+    BODY: 8,    //Means a dead body
+    GROUND: 16,
+    PLATFORM: 32,
+};
+
+// Collision masks for ammo.js / bullet
+// Masks must reference each other to be effective
+// e.g. ball -> player ; player -> ball
+// http://www.bulletphysics.org/mediawiki-1.5.8/index.php?title=Collision_Filtering
+SuperMega.CollisionMasks = {
+    BALL:   SuperMega.CollisionTypes.PLAYER |
+            SuperMega.CollisionTypes.TREE |
+            SuperMega.CollisionTypes.GROUND |
+            SuperMega.CollisionTypes.PLATFORM,
+
+    PLAYER: SuperMega.CollisionTypes.BALL |
+            SuperMega.CollisionTypes.BODY |
+            SuperMega.CollisionTypes.TREE |
+            SuperMega.CollisionTypes.GROUND |
+            SuperMega.CollisionTypes.PLATFORM,
+
+    TREE:   SuperMega.CollisionTypes.BALL |
+            SuperMega.CollisionTypes.PLAYER, //Cannot walk into trees
+
+    BODY:   SuperMega.CollisionTypes.PLAYER |
+            SuperMega.CollisionTypes.GROUND |
+            SuperMega.CollisionTypes.PLATFORM,
+
+    GROUND: SuperMega.CollisionTypes.BALL |
+            SuperMega.CollisionTypes.BODY |
+            SuperMega.CollisionTypes.PLAYER //Allowing ground to collide with player
+};
+
 
 
 SuperMega.resolve_vector = function(x_or_vector, y, z){
@@ -132,12 +175,6 @@ SuperMega.Screen.prototype = Object.assign( {}, {
 
 
 
-
-
-
-
-
-
 /**
  * Level: A wrapper around scene to hold our global scene objects in
  * 
@@ -190,9 +227,6 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
     player: null, //The local player object
     nickname: "SuperMega", //The default player's name
     ball_counter: 0, //The number of balls in the scene
-    
-    
-    
     
     //Now we override add() to allow us to add it to a category for easy tracking:
     _scene_action : function(action, obj, category_name, index_name){
@@ -433,8 +467,8 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
         ball.ballId = ballId;
 
         // Assign physics collision type and masks, so it collides only with specific things
-        ball._physijs.collision_type = CollisionTypes.BALL;
-        ball._physijs.collision_masks = CollisionMasks.BALL;
+        ball._physijs.collision_type = SuperMega.CollisionTypes.BALL;
+        ball._physijs.collision_masks = SuperMega.CollisionMasks.BALL;
 
         // Put the ball in the world
         this.add( ball, "balls", 'p'+playerId+'b'+ballId);
@@ -470,9 +504,9 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
          * @param socket: <WebSocket> Which transmits player events
          */
     
-	// Check each ball
-	var level = this;
-	for(var i in level.balls) {
+    // Check each ball
+    var level = this;
+    for(var i in level.balls) {
         
         var ball_obj = level.balls[i];
             // If the ball belongs to the current player and has moved 50 units below origin - PURGE IT!
@@ -498,11 +532,179 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
                 player_obj.currentBallCount--; 
                 player_obj.hud.currentBallCount.text(maxBallCount - currentBallCount);
             }
-    	}
+        }
     },
     
-    add_tree : function(){
-	//##HERE##
+    get_terrain_z : function(x, y, liquids){
+        /**
+         * Returns the terrain z position at x,y
+         * 
+         *  @param x: <float> x-coordinate
+         *  @param y: <float> y-coordinate
+         *  @param liquids: <Bool> Whether to include liquids or not (default False)
+         *  
+         *  @return z: <float> or <null> If the Z position is viable (i.e. not water)
+         */
+        liquids = liquids || false;
+        var terrain_objs = this.terrain; //Assume solid terrain only
+        if(liquids){ //Add in our liquid terrain
+            terrain_objs = $.merge(this.terrain,this.liquid_terrain);
+        }
+        
+        // Init raycaster
+        var rayLength = 1000,           // look for collisions in a 1000 unit span
+            upperZ = rayLength / 2,     // start 500 units above origin
+            lowerZ = upperZ * -1,       // go 500 units below origin
+            origin = new THREE.Vector3(x, y, upperZ), // offset origin at given 2d coords
+            direction = new THREE.Vector3( x, y, lowerZ), // ray direction points from top-down
+
+            // Init the ray caster
+            r = new THREE.Raycaster(origin.clone(), direction.clone().sub(origin.clone()).normalize());
+
+        // Return the result of the ray casting
+        //return r.intersectObjects($.merge([ ground, water, hills ],all_trees), true); //IntersectObjects is an inherent function in THREE.js
+        var collisions = r.intersectObjects(terrain_objs, true);
+        if(collisions.length == 0){ //Bail if there is no collision
+            return null;
+        }
+        return collisions[0].point.z; //Return the topmost terrain layer z
+    },
+    
+    add_tree : function(options){
+    /**
+     * Adds a tree to the level
+     * 
+     * @param options: {
+     *     position: <THREE.Vector3> The position of the tree
+     *     rotation: <THREE.Euler> The orientation of the tree (ZAxis is the only one you want to rotate on!)
+     * }
+     * @return: <SuperMega.Interactable> The Tree!
+     */
+        
+        var x = options.position.x;
+        var y = options.position.y;
+        var z = options.position.z;
+        var rotation = options.rotation;
+        
+        var created_objects = []; 
+        // 3rd dimension to drop the tree
+        var zPos = null;
+        
+        // If no Z was given, z-lock the position to the terrain
+        if (z == null) {
+            // Find the top-most intersection with any terrain layer for the given 2d coords
+            zPos = this.get_terrain_z(x, y);
+            if(zPos === null){
+                console.log("SuperMega.Level.add_tree(): No suitable terrain at x="+x.toFixed(2)+", y="+y.toFixed(2));
+                return null;
+            }
+        } else {
+            zPos = z;
+        }
+                
+        // Create a new tree mesh from the stored geometry and materials loaded from the JSON model
+        // Notice this is a non-physics-enabled mesh - this mesh will be added to a physics-enabled parent later)
+        var tree = new THREE.Mesh( treeGeo, treeMats );
+    
+        // Trees should cast and receive shadows
+        tree.castShadow = true;
+        tree.receiveShadow = true;
+    
+        // Apply rotation or generate one if none is given
+        var rnd_rotation_z = rotation != null ? rotation : Math.random() * Math.PI;
+    
+        // Create Container and hit box geometries
+        var treeContainerGeo = new THREE.CubeGeometry(1.25, 1.25, .25, 1, 1, 1),
+            treeBoxGeo = new THREE.CubeGeometry(.742, .742, 5, 1, 1, 1),
+            treeLeafBoxGeo = new THREE.CubeGeometry(1.38 * 2, 1.64 * 2, 2, 1, 1, 1),
+    
+            // Invisible hit box material
+            treeBoxMat = Physijs.createMaterial(
+                new THREE.MeshPhongMaterial( {
+                    color: 0x996633,
+                    transparent: true,
+                    opacity: 0
+                }),
+                .8, // high friction
+                .4 // low restitution
+            ),
+    
+            // Parent container which holds hit boxes and tree model
+            treeContainer = new Physijs.BoxMesh(
+                treeContainerGeo,
+                treeBoxMat,
+                0
+            ),
+    
+            // Trunk hit box
+            treeBox = new Physijs.BoxMesh(
+                treeBoxGeo,
+                treeBoxMat,
+                0
+            ),
+    
+            // Foliage hit box
+            treeLeafBox = new Physijs.BoxMesh(
+                treeLeafBoxGeo,
+                treeBoxMat,
+                0
+            );
+    
+    
+            // Assign physics collision type and masks to both hit boxes so only specific collisions apply to trees
+            treeBox._physijs.collision_type = SuperMega.CollisionTypes.TREE;
+            treeBox._physijs.collision_masks = SuperMega.CollisionMasks.TREE;
+            treeLeafBox._physijs.collision_type = SuperMega.CollisionTypes.TREE;
+            treeLeafBox._physijs.collision_masks = SuperMega.CollisionMasks.TREE;
+    
+            // Apply the given location to the tree container
+            treeContainer.position = new THREE.Vector3(x, y, zPos);
+    
+            // Add the child meshes to the container
+            treeContainer.add(treeBox);
+            treeContainer.add(treeLeafBox);
+            treeContainer.add(tree);
+    
+            // Apply the rotation
+            if(rotation){
+                treeContainer.rotation.z = rotation.z;
+            }else{
+                treeContainer.rotation.z = rnd_rotation_z;
+            }
+    
+            // Init hit box rotations to model
+            treeBox.rotation.y = 0.104719755;
+            treeLeafBox.rotation.z = -0.296705973;
+    
+            // Init hit box positions to model
+            treeBox.position.add(new THREE.Vector3(.25631, .16644, 5.49535 / 2 ));
+            treeLeafBox.position.add(new THREE.Vector3(-0.16796, -0.05714, 4.59859));
+    
+            // Add the complete tree to the scene
+            this.collidables.push(treeBox); //We have to add the tree collision boxes separately to the container
+            this.collidables.push(treeLeafBox); //If you don't like this, then make it a new class
+            this.scene.add(treeContainer, "debris"); //We don't want the object container to be collidable
+    },
+    
+    add_platform : function(options){
+        /**
+         * Creates a platform, which can be moving
+         * Options dict:
+         * @param object: A Physijs / THREE.js object
+         * @param position: <THREE.Vector3> Where the platform's "origin" is in terms of the scene
+         * @param orientation: <THREE.Vector3> The rotational orientation of the object.
+         * @param angular_momentum: <THREE.Vector3> the rotational movement of the object (Radians per second) 
+         * @param translation: <THREE.Vector3> the translational movement of the object (units per second)
+         * @param rotation_mode: <str> "oscillating" | "continuous"
+         * @param translation_mode: <str> "oscillating" | "continuous" | "orbiting"
+         * @param magnitude: <float> how long a path is (in units), or how wide (radius) an orbiting path
+         * @param size: <[array]> Array of sizes x,y,z to make the object
+         * @param color: <Hex colour> The colour you wish to set it as
+         * @param friction: <float> how much friction the platform should have
+         * @param restitution: <float> how stiff it should be on collisions
+         */
+        var platform = SuperMega.Platform(options); //It's rather easy when you've got a class!!
+        this.add(platform, "collidables");
     }
 
     
@@ -1196,7 +1398,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
             
             
             //Now detect any imminent collisions in the left/right/forwards/backwards plane
-            var horizontal_collisions = player.quickCollisionPrediction(all_collidables, dist_to_hit.standing_on_ids, delta); //Second property is the stuff you are standing on
+            var horizontal_collisions = this.quickCollisionPrediction(all_collidables, dist_to_hit.standing_on_ids, delta); //Second property is the stuff you are standing on
             
             //LEFT/RIGHT: X, did they collide?
             oldPos = this.position.clone() //We need to update this with every movement
