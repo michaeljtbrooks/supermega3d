@@ -528,14 +528,14 @@ SuperMega.Level.prototype.animate = function(delta){
             try{
                 item.animate(delta);
             }catch(err){ //Item not animatable
-                console.log(err);
+                //console.log(err);
             }
         });
         $.each(self.collidables, function(index,item){
             try{
                 item.animate(delta);
             }catch(err){ //Can't animate it
-                console.log(err);
+                //console.log(err);
             }
         });
 }

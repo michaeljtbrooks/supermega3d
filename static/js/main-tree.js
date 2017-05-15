@@ -78,7 +78,7 @@ var level_contents = {
 
 var DEBUG = true; //Debug mode
 var level; //Where we'll store our level
-var sandbox = false; //Whether to build our debug environment
+var sandbox = true; //Whether to build our debug environment
 
     // screen size
 var SCREEN_WIDTH = window.innerWidth,
@@ -1035,7 +1035,7 @@ function createScene(data) {
         //
         // PLATFORMS AND TRAPS!!!!!
         //
-        for(var tp=0; tp<10; tp++) {
+        for(var tp=0; tp<8; tp++) {
     	var xPos = (Math.random() * worldWidth*2) - (worldWidth / 1);
     	var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
             var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 3; //Find position just above ground 
@@ -1061,6 +1061,18 @@ function createScene(data) {
             moving_entities.push(thing); //Ensures they get animated
             level.add(thing, "collidables");
         }
+        
+        //Add vertical platforms for debugging
+        for(var tp=0; tp<4; tp++) {
+            level.add_platform({
+                "position": level.random_terrain_position(),
+                "translation": [0,0,10],
+                "translation_mode": "reciprocating",
+                "magnitude": 40,
+            });
+        }
+        
+        
         
         //
         // NOMS!!!!!
@@ -1392,7 +1404,7 @@ function animate(delta) {
             player.position.z = 60;
             player.standing_on_velocity = new THREE.Vector3(0,0,0);
         }
-        if(isKeyDown(KEYCODE['9'])){ //Hop up
+        if(isKeyDown(KEYCODE['9'])){ //Boost up
             player.position.z = 60;
             player.velocity.z = 0;
             player.standing_on_velocity = new THREE.Vector3(0,0,0);
@@ -1473,14 +1485,14 @@ function animate(delta) {
     
     // Animate moving entities:
     level.animate(delta);
-    for(var k=0; k < moving_entities.length; k++){
-	var item = moving_entities[k];
-	item.animate(delta); //Call the method on the entity
-    }
-    for(var k=0; k < all_interactables.length; k++){
-	var item = all_interactables[k];
-	item.animate(delta); //Call the method on the entity
-    }
+    //for(var k=0; k < moving_entities.length; k++){
+	//var item = moving_entities[k];
+	//item.animate(delta); //Call the method on the entity
+    //}
+    //for(var k=0; k < all_interactables.length; k++){
+	//var item = all_interactables[k];
+	//item.animate(delta); //Call the method on the entity
+    //}
     
     
     // If the player has moved
