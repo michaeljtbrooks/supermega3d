@@ -53,11 +53,37 @@ SuperMega.DEFAULT_COLOURS = {
 SuperMega.OBJECT_PRESETS = {
     "ice_platform" : {
         "color": 0xAAEEFF,
-            "transparent": true,
-            "opacity": 0.6,
-            "friction": .1, //v low friction
-            "restitution": .4 //low restitution
-    }
+        "transparent": true,
+        "opacity": 0.6,
+        "friction": .1, //v low friction
+        "restitution": .4 //low restitution
+    },
+    "ground_terrain" : {
+        "color": 0x557733,
+        "transparent": false,
+        "opacity": 1,
+        "liquid": false,
+        "multiplier": .25,
+        "subtractor": 6,
+    },
+    "hills_terrain" : {
+        "color": 0x557733,
+        "transparent": false,
+        "opacity": 1,
+        "liquid": false,
+        "multiplier": .75,
+        "subtractor": 35,
+    },
+    "water_terrain" : {
+        "color": 0x4D708A,
+        "ambient": 0xAFCADE,
+        "specular": 0xf5f5f5,
+        "transparent": true,
+        "opacity": 0.5,
+        "liquid": true,
+        "multiplier": .1,
+        "subtractor": 4,
+    },
 };
 
 
@@ -103,31 +129,45 @@ SuperMega.CollisionMasks = {
 };
 
 
-
-SuperMega.resolve_vector = function(x_or_vector, y, z){
+//--- Stand alone functions ---
+SuperMega.resolve_3d_entity = function(entity, x_or_vector, y, z){
     /**
      * Turns the supplied arguments into a THREE.Vector3 object.
      * Acceptable inputs:
      * 
-     *     @param x_or_vector: <THREE.Vector3>
+     *  @param entity: <str> "vector" or "euler"
+     *  @param x_or_vector: <THREE.Vector3>
      *  @param x_or_vector: Array(<float>,<float>,<float>)
      *  @params x_or_vector: <float>
      *      y: <float>
      *      z: <float>
+     *  @param 
+     *  
      *  
      *  @return: <THREE.Vector3>
      *  
      */
+    
+    //Resolve the entity
+    entity = entity || "vector";
+    
+    if(x_or_vector === null || typeof x_or_vector == "undefined"){ //Don't bother doing any calculations
+        return null;
+    }
+    
+    console.log("Given "+(typeof x_or_vector));
+    console.log(x_or_vector);
+    
     if(typeof x_or_vector.clone !== "undefined"){ //Has been given a vector to define rotation
         var x_amt = x_or_vector.x;
         var y_amt = x_or_vector.y;
         var z_amt = x_or_vector.z;
-    }else if(typeof x_or_vector == "Array"){ //Has been given an array to define rotation
+    }else if(typeof x_or_vector.push !== "undefined"){ //Has been given an array to define rotation
         var x_amt = x_or_vector[0] || 0;
         var y_amt = x_or_vector[1] || 0;
         var z_amt = x_or_vector[2] || 0;
     }else if(x_or_vector == "random" || x_or_vector == "Random" || typeof x_or_vector=="undefined"){ //Means randomise me!!
-        amount = y || 0.2*Math.PI;
+        var amount = y || 0.2*Math.PI;
         var x_amt = (Math.random()-0.5) * amount; //Tilt 
         var y_amt = (Math.random()-0.5) * amount;
         var z_amt = (Math.random()-0.5) * amount;
@@ -136,7 +176,20 @@ SuperMega.resolve_vector = function(x_or_vector, y, z){
         var y_amt = y || 0;
         var z_amt = z || 0;
     }
-    return new THREE.Vector3(x_amt, y_amt, z_amt);
+    
+    console.log("Resolved "+entity+": "+x_amt+","+y_amt+","+z_amt);
+    
+    if(entity=="euler"){ //Return a euler
+        return new THREE.Euler(x_amt, y_amt, z_amt);
+    } else { //Return a Vector3 by default
+        return new THREE.Vector3(x_amt, y_amt, z_amt);
+    }
+}
+SuperMega.resolve_vector = function(x_or_vector, y, z){
+    return SuperMega.resolve_3d_entity("vector", x_or_vector, y, z)
+}
+SuperMega.resolve_euler = function(x_or_vector, y, z){
+    return SuperMega.resolve_3d_entity("euler", x_or_vector, y, z)
 }
 
 
@@ -226,10 +279,10 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
     //Single properties
     player: null, //The local player object
     nickname: "SuperMega", //The default player's name
-    ball_counter: 0, //The number of balls in the scene
-    
-    //Now we override add() to allow us to add it to a category for easy tracking:
-    _scene_action : function(action, obj, category_name, index_name){
+    ball_counter: 0  //The number of balls in the scene
+}); //JS inheritance hack part 2
+//Now we override add() to allow us to add it to a category for easy tracking:
+SuperMega.Level.prototype._scene_action = function(action, obj, category_name, index_name){
         /**
          * SuperMega.Scene._scene_action: adds or removes the specified item
          * @param action: The scene function to perform with the obj as an argument (e.g. add(obj))
@@ -310,8 +363,8 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
         
         //And add to / remove from the scene:
         this.scene[action](obj);
-    },
-    add : function(obj,category_name,index_name){
+}
+SuperMega.Level.prototype.add = function(obj,category_name,index_name){
         /**
          * SuperMega.Scene.add: adds the specified item to the scene
          * @param action: The scene function to perform with the obj as an argument (e.g. add(obj))
@@ -320,8 +373,8 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
          * @keyword index_name: For trackers based on dicts e.g. "lighting" 
          */
         return this._scene_action("add",obj,category_name,index_name);
-    },
-    remove : function(obj,category_name,index_name){
+}
+SuperMega.Level.prototype.remove = function(obj,category_name,index_name){
         /**
          * SuperMega.Scene.remove: removes the specified item to the scene
          * @param action: The scene function to perform with the obj as an argument (e.g. remove(obj))
@@ -330,9 +383,8 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
          * @keyword index_name: For trackers based on dicts e.g. "lighting" 
          */
         return this._scene_action("remove",obj,category_name,index_name);
-    },
-    
-    build : function(data){
+}
+SuperMega.Level.prototype.build = function(data){
         /**
          * Constructs a level from the given data
          * 
@@ -386,7 +438,7 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
          *               translation_mode: <str> "oscillating" | "continuous" | "orbiting"
          *               magnitude: <float> how long a path is (in units), or how wide (radius) an orbiting path
          *    ],
-         *    static_objects: [ //Other arbitrary shit that is solid (like trees)
+         *    debris: [ //Other arbitrary shit that is solid (like trees)
          *        {
          *            position: <THREE.Vector3> Where the platform's "origin" is in terms of the scene
          *            geometry: <THREE.geometry> OR <Array>([<int>,<int>,<int>]) array of sizes,  The geometry object to base this on, (default cube 10x10x2).
@@ -413,14 +465,81 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
          * }
          */
         data.terrain = data.terrain || [];
-        data.platforms = data.platforms || []; 
+        data.trees = data.trees || [];
+        data.platforms = data.platforms || [];
+        data.traps = data.traps || [];
         data.powerups = data.powerups || [];
         data.noms = data.noms || [];
-        data.static_objects = data.static_objects || [];
+        data.debris = data.debris || [];
         data.ends = data.ends || [];
-    },
-    
-    add_ball : function(position, force, restitution, playerId, color, ballId) {
+        
+        var self = this; //Allows us to reference this in the jQuery each loops
+        
+        //Build terrains
+        $.each(data.terrain, function(index,options){
+            self.add_terrain(options);
+        });
+        
+        //Build platforms
+        $.each(data.platforms, function(index,options){
+            self.add_platform(options);
+        });
+        
+        //Build traps
+        $.each(data.traps, function(index,options){
+            self.add_trap(options);
+        });
+        
+        //Build trees
+        $.each(data.trees, function(index,options){
+            self.add_tree(options);
+        });
+        
+        //Build powerups
+        $.each(data.powerups, function(index,options){
+            self.add_powerup(options);
+        });
+        
+        //Build noms
+        $.each(data.noms, function(index,options){
+            self.add_nom(options);
+        });
+        
+        //Build Ends
+        $.each(data.ends, function(index,options){
+            self.add_end(options);
+        });
+        
+        //Load static debris items (does NOT get animated)
+        $.each(data.debris, function(index,options){
+            var item = SuperMega.Interactable(options);
+            self.add(item, "debris");
+        });
+       
+}
+SuperMega.Level.prototype.animate = function(delta){
+        /**
+         * Animates all contents of the level!
+         * 
+         * @param delta: <float> time (s) since last frame
+         */
+        var self = this;
+        $.each(self.interactables, function(index,item){
+            try{
+                item.animate(delta);
+            }catch(err){ //Item not animatable
+                console.log(err);
+            }
+        });
+        $.each(self.collidables, function(index,item){
+            try{
+                item.animate(delta);
+            }catch(err){ //Can't animate it
+                console.log(err);
+            }
+        });
+}
+SuperMega.Level.prototype.add_ball = function(position, force, restitution, playerId, color, ballId) {
         /**
          * Adds a ball to the word with the given appearance and trajectory information
          * @param position - The location to start the ball
@@ -479,10 +598,8 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
 
         // Add the ball to the balls collection so I can keep track of it
         //this.balls['p'+playerId+'b'+ballId] = ball;
-    },
-    
-    
-    delete_ball_by_id : function(playerId, ballId){
+}
+SuperMega.Level.prototype.delete_ball_by_id = function(playerId, ballId){
         /**
          * Removes the specified ball from the scene (doesn't require a valid player object!)
          * @param playerId: <int> The player's id
@@ -495,9 +612,8 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
         if (this.balls[key] != null) {
             this.remove(this.balls[key], "balls", key); //Syntax is (obj, category, key)
         }
-    },
-    
-    ball_watcher : function(socket){
+}
+SuperMega.Level.prototype.ball_watcher = function(socket){
         /**
          * Watches all the balls in a scene, removes ones which have fallen off
          * 
@@ -533,9 +649,8 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
                 player_obj.hud.currentBallCount.text(maxBallCount - currentBallCount);
             }
         }
-    },
-    
-    get_terrain_z : function(x, y, liquids){
+}
+SuperMega.Level.prototype.get_terrain_z = function(x, y, liquids){
         /**
          * Returns the terrain z position at x,y
          * 
@@ -568,9 +683,19 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
             return null;
         }
         return collisions[0].point.z; //Return the topmost terrain layer z
-    },
-    
-    add_tree : function(options){
+}
+SuperMega.Level.prototype.random_terrain_position = function(){
+        /**
+         * Returns a random position in the world which is guaranteed to be sitting on the topmost terrain
+         *
+         * @return: <THREE.Vector3> The position
+         */
+        var x = (Math.random() * this.world_width*2) - (this.world_width / 1);
+        var y = (Math.random() * this.world_depth*2) - (this.world_depth / 1);
+        var z = this.get_terrain_z(x,y,false);
+        return new THREE.Vector3(x,y,z);
+}
+SuperMega.Level.prototype.add_tree = function(options){
     /**
      * Adds a tree to the level
      * 
@@ -684,9 +809,8 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
             this.collidables.push(treeBox); //We have to add the tree collision boxes separately to the container
             this.collidables.push(treeLeafBox); //If you don't like this, then make it a new class
             this.scene.add(treeContainer, "debris"); //We don't want the object container to be collidable
-    },
-    
-    add_platform : function(options){
+}
+SuperMega.Level.prototype.add_platform = function(options){
         /**
          * Creates a platform, which can be moving
          * Options dict:
@@ -703,12 +827,216 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
          * @param friction: <float> how much friction the platform should have
          * @param restitution: <float> how stiff it should be on collisions
          */
-        var platform = SuperMega.Platform(options); //It's rather easy when you've got a class!!
+        console.log("Making platform");
+        options.level = self;
+        var platform = new SuperMega.Platform(options); //It's rather easy when you've got a class!!
+        console.log(platform);
         this.add(platform, "collidables");
-    }
+}
+SuperMega.Level.prototype.add_trap = function(options){
+        /**
+         * Creates a trap, which can be moving
+         * Options dict:
+         * @param object: A Physijs / THREE.js object
+         * @param position: <THREE.Vector3> Where the platform's "origin" is in terms of the scene
+         * @param orientation: <THREE.Vector3> The rotational orientation of the object.
+         * @param angular_momentum: <THREE.Vector3> the rotational movement of the object (Radians per second) 
+         * @param translation: <THREE.Vector3> the translational movement of the object (units per second)
+         * @param rotation_mode: <str> "oscillating" | "continuous"
+         * @param translation_mode: <str> "oscillating" | "continuous" | "orbiting"
+         * @param magnitude: <float> how long a path is (in units), or how wide (radius) an orbiting path
+         * @param size: <[array]> Array of sizes x,y,z to make the object
+         * @param color: <Hex colour> The colour you wish to set it as
+         * @param friction: <float> how much friction the platform should have
+         * @param restitution: <float> how stiff it should be on collisions
+         */
+        options.level = self;
+        var trap_platform = new SuperMega.Trap(options); //It's rather easy when you've got a class!!
+        this.add(trap_platform, "collidables");
+}
+SuperMega.Level.prototype.add_powerup = function(options){
+        /**
+         * Creates a power_up, which can be moving
+         * Options dict:
+         * @param object: A Physijs / THREE.js object
+         * @param position: <THREE.Vector3> Where the platform's "origin" is in terms of the scene
+         * @param orientation: <THREE.Vector3> The rotational orientation of the object.
+         * @param angular_momentum: <THREE.Vector3> the rotational movement of the object (Radians per second) 
+         * @param translation: <THREE.Vector3> the translational movement of the object (units per second)
+         * @param rotation_mode: <str> "oscillating" | "continuous"
+         * @param translation_mode: <str> "oscillating" | "continuous" | "orbiting"
+         * @param magnitude: <float> how long a path is (in units), or how wide (radius) an orbiting path
+         * @param size: <[array]> Array of sizes x,y,z to make the object
+         * @param color: <Hex colour> The colour you wish to set it as
+         * @param friction: <float> how much friction the platform should have
+         * @param restitution: <float> how stiff it should be on collisions
+         */
+        options.level = self;
+        var pow_up = new SuperMega.PowerUp(options); //It's rather easy when you've got a class!!
+        this.add(pow_up, "interactables");
+}
+SuperMega.Level.prototype.add_nom = function(options){
+        /**
+         * Creates a power_up, which can be moving
+         * Options dict:
+         * @param object: A Physijs / THREE.js object
+         * @param position: <THREE.Vector3> Where the platform's "origin" is in terms of the scene
+         * @param orientation: <THREE.Vector3> The rotational orientation of the object.
+         * @param angular_momentum: <THREE.Vector3> the rotational movement of the object (Radians per second) 
+         * @param translation: <THREE.Vector3> the translational movement of the object (units per second)
+         * @param rotation_mode: <str> "oscillating" | "continuous"
+         * @param translation_mode: <str> "oscillating" | "continuous" | "orbiting"
+         * @param magnitude: <float> how long a path is (in units), or how wide (radius) an orbiting path
+         * @param size: <[array]> Array of sizes x,y,z to make the object
+         * @param color: <Hex colour> The colour you wish to set it as
+         * @param friction: <float> how much friction the platform should have
+         * @param restitution: <float> how stiff it should be on collisions
+         */
+        options.level = self;
+        var nom = new SuperMega.Nom(options); //It's rather easy when you've got a class!!
+        this.add(nom, "interactables");
+}
+SuperMega.Level.prototype.add_end = function(options){
+        /**
+         * Creates a power_up, which can be moving
+         * Options dict:
+         * @param object: A Physijs / THREE.js object
+         * @param position: <THREE.Vector3> Where the platform's "origin" is in terms of the scene
+         * @param orientation: <THREE.Vector3> The rotational orientation of the object.
+         * @param angular_momentum: <THREE.Vector3> the rotational movement of the object (Radians per second) 
+         * @param translation: <THREE.Vector3> the translational movement of the object (units per second)
+         * @param rotation_mode: <str> "oscillating" | "continuous"
+         * @param translation_mode: <str> "oscillating" | "continuous" | "orbiting"
+         * @param magnitude: <float> how long a path is (in units), or how wide (radius) an orbiting path
+         * @param size: <[array]> Array of sizes x,y,z to make the object
+         * @param color: <Hex colour> The colour you wish to set it as
+         * @param friction: <float> how much friction the platform should have
+         * @param restitution: <float> how stiff it should be on collisions
+         */
+        options.level = self;
+        var the_end = new SuperMega.TheEnd(options); //It's rather easy when you've got a class!!
+        this.add(the_end, "interactables");
+        this.the_ends.push(the_end); //Allows our Noms to update the ends when they are collected
+}
+SuperMega.Level.prototype.add_terrain = function(options){
+        /**
+         * Creates a plane to act as terrain
+         * 
+         * @param height_data: [] Array of height data
+         * @param material: <PhysiJS.Material> What this plane is made out of
+         * @param width: <float> how wide this should be
+         * @param depth: <float> how deep this should be
+         * @param width_vertices: <int> the number of vertices to fit into the width
+         * @param depth_vertices: <int> the numbewr of vertices to fit into the depth
+         * @param multiplier: <float> how undulating the hills should be (0 to 1)
+         * @param subtractor: <float> how far to vertically offset the plane
+         * @param liquid: <str> Whether this is a liquid terrain or not [default = false]
+         * @param colour: <str> The colour to make the terrain
+         * @param preset: <str> Which preset to use (will override multiple other settings)
+         * 
+         * @adds: The plane mesh to the level
+         * 
+         * @return: <Plane Mesh> The terrain
+         */
+        //Handle presets
+        if(options.preset!=null){
+            //Means replace our objects with the present values
+            var preset = SuperMega.OBJECT_PRESETS[options.preset] || null;
+            if(preset){ //Update our options with values from the preset --- Should we do it the other way round??
+                options = $.extend(options, preset);
+            }else{
+                console.log("WARNING: Preset '"+options.preset+"' is not a known valid preset name!");
+            }
+        }
+        
+        //Deal with the slight name variances between the node.js server and this function
+        var data = options.height_data; //This is mandatory!
+        if(!data){
+            console.log("ERROR: SuperMega.Level.add_terrain - you must supply an array of vertex heights in order to generate a terrain!!")
+            return false;
+        }
+        
+        options.width = options.width || options.worldWidth || this.world_width;
+        options.depth = options.depth || options.worldDepth || this.world_depth;
+        options.width_vertices = options.width_vertices || Math.round(options.width)*2; //Defaults to twice world width
+        options.depth_vertices = options.depth_vertices || Math.round(options.depth)*2; //Defaults to twice world width
+        options.multiplier = options.multipler || .25; //Defaults to gently undulating green ground
+        options.subtractor = options.subtractor || 6; //Defaults to rather central average height (just like ground)
+        options.liquid = options.liquid || false; //Normally not a liquid
+        
+        //Handle material
+        if(!options.material || typeof options.material == "undefined"){
+            if(!options.liquid){ //Is NOT a liquid - Create something which looks like grassy ground
+                options.material = Physijs.createMaterial(
+                    new THREE.MeshLambertMaterial( { 
+                            color: options.colour || options.color || 0x557733,
+                            shading: THREE.FlatShading
+                        }),
+                    .8, // high friction
+                    .4 // low restitution
+                );
+            } else { //Is a liquid - Create something which looks like water (and has no PhysiJS power)
+                options.material = new THREE.MeshPhongMaterial({
+                    color: options.colour || options.color || 0x4D708A,
+                    ambient: options.ambient || 0xAFCADE,
+                    specular: options.specular || 0xf5f5f5,
+                    shininess: 100,
+                    transparent: true,
+                    opacity: options.opacity || 0.5,
+                    shading: THREE.FlatShading
+                });
+            }
+        }
+        
+        //Generate plane:
+        var floatData = new Float32Array(data.length);
+        for (var i = 0; i < data.length; i++) {
+            floatData[i] = data[i];
+        }
 
-    
-}); //JS inheritance hack part 2
+        // Provision a new three-dimensional plane with the given number of vertices
+        var terrainGeometry = new THREE.Plane3RandGeometry( options.width_vertices, options.depth_vertices, options.width - 1, options.depth - 1 );
+
+        // Apply the height map data, multiplier and subtractor to the plane vertices
+        for ( var i = 0, l = terrainGeometry.vertices.length; i < l; i ++ ) {
+            terrainGeometry.vertices[ i ].z = floatData[ i ] * options.multiplier - options.subtractor;
+        }
+
+        // Update normals and centroids because we hacked the plane geometry
+        terrainGeometry.computeFaceNormals();
+        terrainGeometry.computeVertexNormals();
+        terrainGeometry.computeCentroids();
+
+        // Create the terrain physics mesh - heightfield because it's a perfect fit
+        var t = new Physijs.HeightfieldMesh(terrainGeometry, options.material, 0, options.width - 1, options.depth - 1);
+
+        // Terrain Behaviour
+        if(!options.liquid){
+            //Shadows
+            t.castShadow = true;
+            t.receiveShadow = true;
+        } else { //Water doesn't cast a shadow
+            t.castShadow = false;
+            t.receiveShadow = true;
+        }
+
+        // Assign physics collision masks and type so it only causes collisions with specific things
+        t._physijs.collision_type = SuperMega.CollisionTypes.GROUND;
+        t._physijs.collision_masks = SuperMega.CollisionMasks.GROUND;
+        
+        
+        //Add to level:
+        if(!options.liquid){
+            this.add(t,"terrain");
+        } else {
+            this.add(t,"liquid_terrain");
+        }
+        
+        // Return the terrain mesh
+        return t;
+        
+}
+
 
 
 
@@ -804,11 +1132,10 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
     left_vertices: [],
     left_vertices_names: [],
     right_vertices: [],
-    right_vertices_names: [],
-    
-
-    //Methods:
-    build_rays : function(){
+    right_vertices_names: []
+});
+//Methods:
+SuperMega.Player.prototype.build_rays = function(){
         /**
          * Creates the collision detection rays
          */
@@ -865,10 +1192,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
         
         this.caster = new THREE.Raycaster(); //Use one raycaster, save memory!
         
-    },
-    
-    
-    reset : function(options, scene, hud){
+}
+SuperMega.Player.prototype.reset = function(options, scene, hud){
         /**
          * Resets the player's position and score etc.
          * 
@@ -906,9 +1231,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
         this.visible = true;
         this.__dirtyPosition = true;
         this.__dirtyRotation = true;
-    },
-    
-    rotateVelocity : function(z_rotation_speed){
+}
+SuperMega.Player.prototype.rotateVelocity = function(z_rotation_speed){
         /**
          * Adjusts the player's velocity for conservation of momentum if player rotates while moving (most noticable on ice sliding)
          * @param z_rotation_speed: <float> The angular momentum player is rotating by
@@ -919,9 +1243,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
         this.velocity.x = old_vel.x * Math.cos(z_rotation_speed) + old_vel.y * Math.sin(z_rotation_speed); //Rotational matrix. 
         this.velocity.y = old_vel.y * Math.cos(z_rotation_speed) + -old_vel.x * Math.sin(z_rotation_speed); //For rotational matrices we use -(sin A)  on the second axis
         this.velocity.z = old_vel.z; //Yep, it's simply (0,0,1) for that rotational matrix!
-    },
-    
-    adjustStandingOnVelocity : function (platformObj){
+}
+SuperMega.Player.prototype.adjustStandingOnVelocity = function (platformObj){
         //Sanity check the platform has returned its velocity (we have to be nearly in contact with it)
         /**
          * Adjusts the player's base velocity to the platform you are standing on
@@ -947,9 +1270,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
             this.standing_on_velocity = plat_vel; //Means we're setting it to Zero
         }
         return plat_vel;
-    },
-    
-    detectCollision: function(otherObjs){
+}
+SuperMega.Player.prototype.detectCollision = function(otherObjs){
         /**
          * Internal collision detection, uses rays which pass from object centre to vertices. Useful for "after the fact" collision detection
          * 
@@ -995,12 +1317,9 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
             };
         }
         return false;
-    },
-    detectCollisions : this.detectCollision,
-    
-    
-    
-    zCollisionPrediction: function(otherObjs){
+}
+SuperMega.Player.prototype.detectCollisions = function(otherObjs){return this.detectCollision(otherObjs);} //ALIAS
+SuperMega.Player.prototype.zCollisionPrediction = function(otherObjs){
         /**
          * Detects when you'll collide with something if jumping or falling, so that we can arrest the Z movement by the specified amount
          * This stops you jumping and falling through platforms. It'll also ensure you "hover" just over objects rather than collide with them all the time
@@ -1112,9 +1431,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
             "standing_on_ids" : standing_on_ids,
             "hit_touchable" : hit_touchable
         };
-    },
-    
-    quickCollisionPrediction: function(otherObjs, excludedObjsIds, delta){
+}
+SuperMega.Player.prototype.quickCollisionPrediction = function(otherObjs, excludedObjsIds, delta){
         /**
          * Detects collisions that are about to happen in the x and y direction.
          * This allows you to detect when you're about to get shoved by a moving platform
@@ -1200,9 +1518,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
         }
         
         return collisions;
-    },
-    
-    lastMovementCausesCollision: function(x,y,z,objs){
+}
+SuperMega.Player.prototype.lastMovementCausesCollision = function(x,y,z,objs){
         /**
          * Checks that the last movement is ok, or has cause a collision / made a collision worse
          * @param x: the amount Left/Right moved
@@ -1235,9 +1552,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
             }
         }
         return false; //Otherwise, the movement will not make things worse
-    },
-    
-    intersects_terrain : function(terrain_objs){
+}
+SuperMega.Player.prototype.intersects_terrain = function(terrain_objs){
         /**
          * Determines if the player is intersecting the terrain, if
          * so return the z (height) below the player where intersection
@@ -1265,9 +1581,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
             return intersects[0].point.z; //Return the Z coordinate of intersect
         }
         return null;
-    },
-    
-    adjust_to_stand_on_terrain : function(terrain_objs){
+}
+SuperMega.Player.prototype.adjust_to_stand_on_terrain = function(terrain_objs){
         /**
          * Sticks the player to the terrain if they are just about standing on it.
          * Because the terrain is a convoluted mesh (lots of triangles), collision detection
@@ -1300,10 +1615,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
         }
         
         return this; //For chaining        
-    },
-    
-    
-    move_according_to_velocity : function(delta, level){
+}
+SuperMega.Player.prototype.move_according_to_velocity = function(delta, level){
         /**
          * Moves this player according to their internal velocities
          * It's essentially the .animate() function for player!!
@@ -1528,9 +1841,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
         //Return the friction so the rest of our engine can use it.
         this.mu = mu;
         return mu;
-    },
-    
-    make_sprite: function(options){
+}
+SuperMega.Player.prototype.make_sprite = function(options){
         /**
          * Creates the "sprite" = Player's nameplate and hitpoint bar
          * 
@@ -1613,9 +1925,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
             sprite.scale.set( 10, 10, 1 );
             this.sprite = sprite; //Store in object
             return sprite;
-    },
-    
-    update_sprite : function(){
+}
+SuperMega.Player.prototype.update_sprite = function(){
         /**
          * Updates the player's name and hitpoint bar (called the "sprite")
          * 
@@ -1630,10 +1941,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
         this.sprite.position.set(0, 0, 2); // Offset the sprite above the player
         this.add( this.sprite );  // Add the sprite to the player object
         return this.sprite;
-    },
-    
-    
-    delete_balls : function(scene, hud, options) {
+}
+SuperMega.Player.prototype.delete_balls = function(scene, hud, options) {
         /**
          * Deletes all of the given player's balls from the scene
          * @param scene: <Physijs.scene> to remove balls from
@@ -1671,9 +1980,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
 
         // Update the ball counter HUD cuz the player count might have changed
         hud.currentBallCount.text(this.maxBallCount - this.currentBallCount);
-    },
-    
-    set_power : function(pow){
+}
+SuperMega.Player.prototype.set_power = function(pow){
         /**
          * Sets the player's power level to pow
          * 
@@ -1700,10 +2008,9 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
         this.hud.maxBallCount.text(this.maxBallCount);
         
         return this.power_state;
-    },
-    setPower : function(pow){return this.set_power(pow)}, //ALIAS
-    
-    power_up : function(increment){ 
+}
+SuperMega.Player.prototype.setPower = function(pow){return this.set_power(pow);} //ALIAS
+SuperMega.Player.prototype.power_up = function(increment){ 
         /**
          * Increases the player's full power state by n
          * 
@@ -1718,14 +2025,12 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
             this.currentBallCount = 0;
         }
         return outcome;
-    },
-    
-    respawn : function(){
+}
+SuperMega.Player.prototype.respawn = function(){
         this.heal(100);
         this.reset();
-    },
-    
-    injure : function(damage){
+}
+SuperMega.Player.prototype.injure = function(damage){
         /**
         * Injures the player, if player loses all hit points, drops down a power level
         * 
@@ -1752,9 +2057,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
         }
         // Update the remote player's sprite for the HP changes
         this.update_sprite();
-    },
-    
-    heal : function(life){
+}
+SuperMega.Player.prototype.heal = function(life){
         /**
          * Boosts the player's health by the life amount
          * 
@@ -1766,9 +2070,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
         }
         //Update the remote player's sprite for the HP changes
         this.update_sprite();
-    },
-    
-    get_nom : function(noms_collected){
+}
+SuperMega.Player.prototype.get_nom = function(noms_collected){
         /**
          * Increases nom score:
          * @param noms_collected: The number of noms just picked up
@@ -1776,9 +2079,8 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
         noms_collected = noms_collected || 1;
         this.noms += 1;
         this.hud.nomCount.text(this.noms);
-    },
-    
-    throw_ball : function(socket, level){
+}
+SuperMega.Player.prototype.throw_ball = function(socket, level){
     /**
      * When player throws a ball
      * 
@@ -1846,9 +2148,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
             this.player_id,
             player.material.color,
             eventData.ballId);
-    }
-    
-}); 
+}
 Object.defineProperty(SuperMega.Player.prototype, 'userData', {
     /**
      * Allows us to fall back to the old userData property
@@ -1878,8 +2178,8 @@ Object.defineProperty(SuperMega.Player.prototype, 'userData', {
  *        material: <Physijs.Material> Material to coat this object with, (default transparent)
  *        contains: [<Mesh1>,<Mesh2>] A list of sub objects which will reside inside this
  *       position: <THREE.Vector3> Where the platform's "origin" is in terms of the scene
- *       orientation: <THREE.Vector3> The rotational orientation of the object.
- *        angular_momentum: <THREE.Vector3> the rotational movement of the object (Radians per second) 
+ *       orientation: <THREE.Euler> The rotational orientation of the object.
+ *        angular_momentum: <THREE.Euler> the rotational movement of the object (Radians per second) 
  *       translation: <THREE.Vector3> the translational movement of the object (units per second)
  *       rotation_mode: <str> "oscillating" | "continuous"
  *       translation_mode: <str> "oscillating" | "continuous" | "orbiting"
@@ -1901,6 +2201,14 @@ Object.defineProperty(SuperMega.Player.prototype, 'userData', {
  *    
  */
 SuperMega.Interactable = function (options){
+    
+    
+    //Ensure we have valid Vectors and Eulers coming in: 
+    if(options.position){options.position = SuperMega.resolve_vector(options.position);}
+    if(options.translation){options.translation = SuperMega.resolve_vector(options.translation);}
+    if(options.angular_momentum){options.angular_momentum = SuperMega.resolve_euler(options.angular_momentum);} 
+    if(options.orientation){options.orientation = SuperMega.resolve_euler(options.orientation);}
+
     
     //Resolve options:
     var ops = {
@@ -1924,8 +2232,10 @@ SuperMega.Interactable = function (options){
         "preset" : options.preset || null //Can pass the scene in for manipulating pickups
     };
     
+    //Alias level
     this.level = ops.level; //Track level if passed in at start
     
+    //Apply presets
     if(ops.preset!=null){
         //Means replace our objects with the present values
         var preset = SuperMega.OBJECT_PRESETS[ops.preset] || null;
@@ -1936,6 +2246,7 @@ SuperMega.Interactable = function (options){
         }
     }
     
+    //Resolve geometry and material
     if(ops.geometry==null){
         //Create default geometry:
         ops.geometry = new THREE.CubeGeometry(1, 1, 1, 1, 1, 1);
@@ -1950,7 +2261,7 @@ SuperMega.Interactable = function (options){
                                     ops.friction, // high friction
                                     ops.restitution // low restitution
                                 );
-    }
+    } 
     
     //Now we have enough to create our object:
     Physijs.BoxMesh.call(this, ops.geometry, ops.material, ops.mass ); //JS inheritance hack part 1
@@ -2188,7 +2499,8 @@ SuperMega.Platform = function(options){
     //Fix the geometry etc. DEfaults to 10,10,2
     options.geometry = options.geometry || null;
     if(!(options.geometry instanceof THREE.Geometry)){ //User has supplied an array [x,y,z] sizes instead of a geometry object, so create
-        var sizes = options.geometry || options.sizes || [];
+        var sizes = options.geometry || options.size || options.sizes || [];
+        console.log("Sizes: "+sizes.toString());
         options.geometry = new THREE.CubeGeometry(sizes[0] || 10, sizes[1] || 10, sizes[2] || 2);
     }
     options.material = options.material || Physijs.createMaterial(

@@ -55,8 +55,30 @@ if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
 // ***** GLOBAL VARS ***************************************************************************************************
 // *********************************************************************************************************************
 
+var DEG30 = Math.PI/6;
+var DEG45 = Math.PI/4;
+var DEG60 = Math.PI/3;
+var DEG90 = Math.PI/2;
+
+var level_contents = {
+        0:{ //Our first level
+            "platforms" : [
+                {"size":[10,30,2], "position":[0,10,-5]},
+                {"size":[10,20,2], "position":[0,33,-0.5], "orientation":[DEG30,0,0]},
+                {"size":[20,10,2], "position":[5,46.5,4.5], "orientation":[0,0,0]},
+                //Trap
+                {"size":[10,10,2], "position":[30,46.5,-0.5], "orientation":[0,0,0], "translation":[0,0,10], "translation_mode":"reciprocating", "magnitude":50},
+            ],
+            "start_position": new THREE.Vector3(0,0,2),
+            "start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
+        }
+};
+
+
+
 var DEBUG = true; //Debug mode
 var level; //Where we'll store our level
+var sandbox = false; //Whether to build our debug environment
 
     // screen size
 var SCREEN_WIDTH = window.innerWidth,
@@ -848,265 +870,290 @@ function connect(nickname) {
 function createScene(data) {
     
     console.log(data);
-    
-    //
-    // WATER
-    //
-
-    // Setup the water material, blue, semi-reflective, semi-transparent
-    var planeMaterial = new THREE.MeshPhongMaterial({
-        color: 0x4D708A,
-        ambient: 0xAFCADE,
-        specular: 0xf5f5f5,
-        shininess: 100,
-        transparent: true,
-        opacity: 0.5,
-        shading: THREE.FlatShading
-    });
-
-    // Create a plane based on the data given from the server
-    water = createPlaneFromData(
-        data.water.data,
-        data.water.worldWidth,
-        data.water.worldHeight,
-        data.water.width,
-        data.water.height,
-        planeMaterial,
-        data.water.multiplier,
-        data.water.subtractor
-    );
-
-    // Add the water plane to the scene
-    water.castShadow = false;
-    water.receiveShadow = true;
-    level.add(water,"liquid_terrain");
-
-
-    //
-    // GROUND
-    //
-
-    var groundPhysMaterial = Physijs.createMaterial(
-        new THREE.MeshLambertMaterial( { color: 0x557733, shading: THREE.FlatShading } ),
-        .8, // high friction
-        .4 // low restitution
-    );
-
-    // Create a plane based on the data given from the server
-    ground = createPlaneFromData(
-        data.ground.data,
-        data.ground.worldWidth,
-        data.ground.worldHeight,
-        data.ground.width,
-        data.ground.height,
-        groundPhysMaterial,
-        data.ground.multiplier,
-        data.ground.subtractor
-    );
- 
-    // Add the ground to the scene
-    level.add(ground, "terrain");
-
-
-    //
-    // HILLS
-    //
-
-    var hillsPhysMaterial = Physijs.createMaterial(
-        new THREE.MeshLambertMaterial( { color: 0xFAD55C, shading: THREE.FlatShading } ),
-        .8, // high friction
-        .4 // low restitution
-    );
-
-    // Create a plane based on the data given from the server
-    hills = createPlaneFromData(data.hills.data, data.hills.worldWidth, data.hills.worldHeight, data.hills.width, data.hills.height, hillsPhysMaterial, data.hills.multiplier, data.hills.subtractor );
-
-    // Add the hills to the scene
-    level.add(hills, "terrain");
-
-
-    
-    //
-    // PLATFORMS - 20 random ones!
-    //
-    for(var pl=0; pl<20; pl++) {
-        addPlatform(null, null, null, null); //The internal function will randomise it for us!
-    }
-    
-    // Now 4 MOVING ones!!
-    addMovingPlatform({
-	    "translation" : new THREE.Vector3(Math.PI/20,Math.PI/20,0),
-	    "translation_mode" : "orbiting",
-	    "magnitude" : 30
-    });
-    addMovingPlatform({
-	    "translation" : new THREE.Vector3(Math.PI/5,Math.PI/5,0),
-	    "translation_mode" : "orbiting",
-	    "magnitude" : 20
-    });
-    addMovingPlatform({
-	    "angular_momentum" : new THREE.Vector3(Math.PI/4,0,0),
-	    "translation" : new THREE.Vector3(Math.PI/10,Math.PI/10,0),
-	    "translation_mode" : "orbiting",
-	    "magnitude" : 20
-    });
-    addMovingPlatform({
-	    "translation" : new THREE.Vector3(20,0,0),
-	    "translation_mode" : "reciprocating",
-	    "magnitude" : 60
-    });
-    
-    //Now a fucking steep platform:
-    var steep_platform = addPlatform(null, null, null, new THREE.Euler(-Math.PI/1.5,-Math.PI/1.5,0), false); //Really steep bastard
-    steep_platform.material.color.setHex(0xDD33CC); //Pink platform
-    
-    //Now a huuuuge fucker to test our motions
-    addMovingPlatform({
-	"translation" : new THREE.Vector3(20,20,0),
-	"translation_mode" : "reciprocating",
-	"magnitude" : 60,
-	"size" : [30,30,100]
-    });
-
-    
-    //
-    // PICKUPS!!!!!
-    //
-    for(var pu=0; pu<5; pu++) {
-	var xPos = (Math.random() * worldWidth*2) - (worldWidth / 1);
-	var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
-        var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 3; //Find position just above ground 
-        var pos = new THREE.Vector3(xPos,yPos,zPos);
-        var pup = new SuperMega.Powerup({
-            "position" : pos,
-            "translation" : new THREE.Vector3(0,0,20),
-            "translation_mode" : "reciprocating",
-            "magnitude" : 10,
+    var start_position = new THREE.Vector3(0,0,0);
+    var start_orientation = new THREE.Euler(0,0,0);
+    if(!sandbox){ //We wish to load a level from data
+        level.build(level_contents[0]); //Load level 1
+        start_position = level_contents[0].start_position || start_position;
+        start_orientation = level_contents[0].start_orientation || start_orientation;
+    }else{
+        /**
+         * Build our sandbox level
+         */
+        
+            //
+            // WATER
+            //
+           
+            
+        // Setup the water material, blue, semi-reflective, semi-transparent
+        var planeMaterial = new THREE.MeshPhongMaterial({
+            color: 0x4D708A,
+            ambient: 0xAFCADE,
+            specular: 0xf5f5f5,
+            shininess: 100,
+            transparent: true,
+            opacity: 0.5,
+            shading: THREE.FlatShading
         });
-        all_interactables.push(pup);
-        level.add(pup, "interactables");
-    }
+    
+        // Create a plane based on the data given from the server
+        water = createPlaneFromData(
+            data.water.data,
+            data.water.worldWidth,
+            data.water.worldHeight,
+            data.water.width,
+            data.water.height,
+            planeMaterial,
+            data.water.multiplier,
+            data.water.subtractor
+        );
+    
+        // Add the water plane to the scene
+        water.castShadow = false;
+        water.receiveShadow = true;
+        //level.add(water,"liquid_terrain");
+        
+        
+        //Replace with our new Level.add_terrain methods
+        level.add_terrain({
+            "height_data" : data.water.data, //Mandatory
+            "preset" : "water_terrain",
+            "width_vertices" : data.water.width,
+            "depth_vertices" : data.water.height,
+            "multiplier" : data.water.multiplier,
+            "subtractor" : data.water.subtractor
+        });
     
     
-    //
-    // TRAPS!!!!!
-    //
-    for(var tp=0; tp<10; tp++) {
-	var xPos = (Math.random() * worldWidth*2) - (worldWidth / 1);
-	var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
-        var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 3; //Find position just above ground 
-        var pos = new THREE.Vector3(xPos,yPos,zPos);
-        var type = (Math.random()*2);
-        if(type<1){ //Make a trap
-            var thing = new SuperMega.Trap({
-                "position" : pos,
-                "translation" : new THREE.Vector3(Math.random()*30-15,Math.random()*30-15,Math.random()*6-3),
-                "translation_mode" : "reciprocating",
-                "magnitude" : 100,
-            });
-        }else{ //Make a platform
-            var thing = new SuperMega.Platform({
-                "position" : pos,
-                "translation" : new THREE.Vector3(Math.random()*30-15,Math.random()*30-15,Math.random()*6-3),
-                "translation_mode" : "reciprocating",
-                "magnitude" : 100,
-                "preset" : "ice_platform"
-            });
+        //
+        // GROUND
+        //
+    
+        var groundPhysMaterial = Physijs.createMaterial(
+            new THREE.MeshLambertMaterial( { color: 0x557733, shading: THREE.FlatShading } ),
+            .8, // high friction
+            .4 // low restitution
+        );
+    
+        // Create a plane based on the data given from the server
+        ground = createPlaneFromData(
+            data.ground.data,
+            data.ground.worldWidth,
+            data.ground.worldHeight,
+            data.ground.width,
+            data.ground.height,
+            groundPhysMaterial,
+            data.ground.multiplier,
+            data.ground.subtractor
+        );
+     
+        // Add the ground to the scene
+        level.add(ground, "terrain");
+    
+    
+        //
+        // HILLS
+        //
+    
+        var hillsPhysMaterial = Physijs.createMaterial(
+            new THREE.MeshLambertMaterial( { color: 0xFAD55C, shading: THREE.FlatShading } ),
+            .8, // high friction
+            .4 // low restitution
+        );
+    
+        // Create a plane based on the data given from the server
+        hills = createPlaneFromData(data.hills.data, data.hills.worldWidth, data.hills.worldHeight, data.hills.width, data.hills.height, hillsPhysMaterial, data.hills.multiplier, data.hills.subtractor );
+    
+        // Add the hills to the scene
+        level.add(hills, "terrain");
+    
+    
+        
+        //
+        // PLATFORMS - 20 random ones!
+        //
+        for(var pl=0; pl<20; pl++) {
+            addPlatform(null, null, null, null); //The internal function will randomise it for us!
         }
-        all_platforms.push(thing); //Ensures we can collect them
-        moving_entities.push(thing); //Ensures they get animated
-        level.add(thing, "collidables");
-    }
-    
-    //
-    // NOMS!!!!!
-    //
-    for(var nm=0; nm<10; nm++) {
-	var xPos = (Math.random() * worldWidth*2) - (worldWidth / 1);
-	var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
-        var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 1; //Find position just above ground 
-        var pos = new THREE.Vector3(xPos,yPos,zPos);
-        var nom = new SuperMega.Nom({
-            "position" : pos,
+        
+        // Now 4 MOVING ones!!
+        addMovingPlatform({
+    	    "translation" : new THREE.Vector3(Math.PI/20,Math.PI/20,0),
+    	    "translation_mode" : "orbiting",
+    	    "magnitude" : 30
         });
-        all_interactables.push(nom); //Ensures we can collect them
-        moving_entities.push(nom); //Ensures they get animated
-        level.add(nom, "interactables");
-    }
+        addMovingPlatform({
+    	    "translation" : new THREE.Vector3(Math.PI/5,Math.PI/5,0),
+    	    "translation_mode" : "orbiting",
+    	    "magnitude" : 20
+        });
+        addMovingPlatform({
+    	    "angular_momentum" : new THREE.Vector3(Math.PI/4,0,0),
+    	    "translation" : new THREE.Vector3(Math.PI/10,Math.PI/10,0),
+    	    "translation_mode" : "orbiting",
+    	    "magnitude" : 20
+        });
+        addMovingPlatform({
+    	    "translation" : new THREE.Vector3(20,0,0),
+    	    "translation_mode" : "reciprocating",
+    	    "magnitude" : 60
+        });
+        
+        //Now a fucking steep platform:
+        var steep_platform = addPlatform(null, null, null, new THREE.Euler(-Math.PI/1.5,-Math.PI/1.5,0), false); //Really steep bastard
+        steep_platform.material.color.setHex(0xDD33CC); //Pink platform
+        
+        //Now a huuuuge fucker to test our motions
+        addMovingPlatform({
+    	"translation" : new THREE.Vector3(20,20,0),
+    	"translation_mode" : "reciprocating",
+    	"magnitude" : 60,
+    	"size" : [30,30,100]
+        });
     
-    //
-    // The End
-    //
-    var xPos = (Math.random() * worldWidth*2) - (worldWidth / 1);
-    var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
-    var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 0.25; //Find position just above ground 
-    var pos = new THREE.Vector3(xPos,yPos,zPos);
-    var the_end = new SuperMega.TheEnd({
-        "position" : pos,
-        "nom_threshold" : 1 //For resting
-    });
-    all_interactables.push(the_end); //Ensures we can touch it
-    moving_entities.push(the_end); //Ensures they get animated
-    level.add(the_end, "interactables");
-    level.the_ends.push(the_end);
-    
-    
-    //
-    // TREES
-    //
-
-    // Init the JSON loader to load up my tree model
-    var loader = new THREE.JSONLoader();
-
-    // Load my tree model I made in Blender
-    loader.load( "js/models/tree.js", function( geometry, materials ) {
-
-        // Extract the tree geometry
-        treeGeo = geometry;
-
-        // Extract the tree materials
-        treeMats = new THREE.MeshFaceMaterial( materials );
-
-        // Modify the tree materials
-        for (var i in treeMats.materials) {
-
-            // Make the tree look like the rest of the world - FLAT SHADING!
-            treeMats.materials[i].shading = THREE.FlatShading;
-
-            // Make the foliage emissive, so they look better at night
-            if (i == 0) {
-                treeMats.materials[i].emissive = treeMats.materials[i].color;
-                treeMats.materials[i].emissive.r *= 0.8;
-                treeMats.materials[i].emissive.g *= 0.8;
-                treeMats.materials[i].emissive.b *= 0.8;
+        
+        //
+        // PICKUPS!!!!!
+        //
+        for(var pu=0; pu<5; pu++) {
+    	var xPos = (Math.random() * worldWidth*2) - (worldWidth / 1);
+    	var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
+            var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 3; //Find position just above ground 
+            var pos = new THREE.Vector3(xPos,yPos,zPos);
+            var pup = new SuperMega.Powerup({
+                "position" : pos,
+                "translation" : new THREE.Vector3(0,0,20),
+                "translation_mode" : "reciprocating",
+                "magnitude" : 10,
+            });
+            all_interactables.push(pup);
+            level.add(pup, "interactables");
+        }
+        
+        
+        //
+        // PLATFORMS AND TRAPS!!!!!
+        //
+        for(var tp=0; tp<10; tp++) {
+    	var xPos = (Math.random() * worldWidth*2) - (worldWidth / 1);
+    	var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
+            var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 3; //Find position just above ground 
+            var pos = new THREE.Vector3(xPos,yPos,zPos);
+            var type = (Math.random()*2);
+            if(type<1){ //Make a trap
+                var thing = new SuperMega.Trap({
+                    "position" : pos,
+                    "translation" : new THREE.Vector3(Math.random()*30-15,Math.random()*30-15,Math.random()*6-3),
+                    "translation_mode" : "reciprocating",
+                    "magnitude" : 100,
+                });
+            }else{ //Make a platform
+                var thing = new SuperMega.Platform({
+                    "position" : pos,
+                    "translation" : new THREE.Vector3(Math.random()*30-15,Math.random()*30-15,Math.random()*6-3),
+                    "translation_mode" : "reciprocating",
+                    "magnitude" : 100,
+                    "preset" : "ice_platform"
+                });
             }
+            all_platforms.push(thing); //Ensures we can collect them
+            moving_entities.push(thing); //Ensures they get animated
+            level.add(thing, "collidables");
         }
-
-    // Drop trees where the server said to do so
-    console.log("Adding trees:");
-    console.log(level.collidables); //See what we've got
-    for(var i in data.trees) {
-        level.add_tree({
-                "position" : {"x":data.trees[i].x, "y":data.trees[i].y, "z":null},
-                "rotation" : {"x":null, "y":null, "z":data.trees[i].rotation}
+        
+        //
+        // NOMS!!!!!
+        //
+        for(var nm=0; nm<10; nm++) {
+    	var xPos = (Math.random() * worldWidth*2) - (worldWidth / 1);
+    	var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
+            var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 1; //Find position just above ground 
+            var pos = new THREE.Vector3(xPos,yPos,zPos);
+            var nom = new SuperMega.Nom({
+                "position" : pos,
+            });
+            all_interactables.push(nom); //Ensures we can collect them
+            moving_entities.push(nom); //Ensures they get animated
+            level.add(nom, "interactables");
+        }
+        
+        //
+        // The End
+        //
+        var xPos = (Math.random() * worldWidth*2) - (worldWidth / 1);
+        var yPos = (Math.random() * worldDepth*2) - (worldDepth / 1);
+        var zPos = intersectGroundObjs(xPos, yPos)[0].point.z + 0.25; //Find position just above ground 
+        var pos = new THREE.Vector3(xPos,yPos,zPos);
+        var the_end = new SuperMega.TheEnd({
+            "position" : pos,
+            "nom_threshold" : 1 //For resting
         });
+        all_interactables.push(the_end); //Ensures we can touch it
+        moving_entities.push(the_end); //Ensures they get animated
+        level.add(the_end, "interactables");
+        level.the_ends.push(the_end);
+        
+        
+        //
+        // TREES
+        //
+    
+        // Init the JSON loader to load up my tree model
+        var loader = new THREE.JSONLoader();
+    
+        // Load my tree model I made in Blender
+        loader.load( "js/models/tree.js", function( geometry, materials ) {
+    
+            // Extract the tree geometry
+            treeGeo = geometry;
+    
+            // Extract the tree materials
+            treeMats = new THREE.MeshFaceMaterial( materials );
+    
+            // Modify the tree materials
+            for (var i in treeMats.materials) {
+    
+                // Make the tree look like the rest of the world - FLAT SHADING!
+                treeMats.materials[i].shading = THREE.FlatShading;
+    
+                // Make the foliage emissive, so they look better at night
+                if (i == 0) {
+                    treeMats.materials[i].emissive = treeMats.materials[i].color;
+                    treeMats.materials[i].emissive.r *= 0.8;
+                    treeMats.materials[i].emissive.g *= 0.8;
+                    treeMats.materials[i].emissive.b *= 0.8;
+                }
+            }
+            
+            // Drop trees where the server said to do so
+            console.log("Adding trees:");
+            console.log(level.collidables); //See what we've got
+            for(var i in data.trees) {
+                level.add_tree({
+                        "position" : {"x":data.trees[i].x, "y":data.trees[i].y, "z":null},
+                        "rotation" : {"x":null, "y":null, "z":data.trees[i].rotation}
+                });
+            }
+            console.log(level.collidables); //See what we've got
+        });
+        
+        //Store the collidable entities:
+        //all_collidables = $.merge(all_platforms, all_trees);
+        
+        
+        //Now resolve the starting position
+        var x_start = data.player.start_pos.x;
+        var y_start = data.player.start_pos.y;
+        var z_start = level.get_terrain_z(x_start, y_start, false); //Gets the position of the terrain at user's X & Y (false means no liquids)        
+        
     }
-    console.log(level.collidables); //See what we've got
-    
-    //Store the collidable entities:
-    //all_collidables = $.merge(all_platforms, all_trees);
-
-    
     
     //
     // PLAYER
     //
     
     player = new SuperMega.Player({player_id : data.player.player_id, nickname : nickname}, scene, hud);
-    
-    // Player model should cast and receive shadows so they look pretty
-    player.castShadow = true;
-    player.receiveShadow = true;
     var LOCAL_PLAYER = player; //Just so it's easy to find!
     
 
@@ -1144,16 +1191,16 @@ function createScene(data) {
     // Init the player's sprite
     updatePlayerSprite(playerId);
 
-    // Set initial x/y, given from the server
-    player.position.x = data.player.start_pos.x;
-    player.position.y = data.player.start_pos.y;
-
+    // Set initial x/y, given from the server (or level config)
+    player.position.x = start_position.x;
+    player.position.y = start_position.y;
+    player.position.z = start_position.z;
+    player.rotation.z = start_orientation.z;
         
     //Start on power 0:
     player.setPower(0);
     
-    // Lock the player to the ground
-    initPlayerZ();
+
 
     // Tell the other clients we moved (to compensate for the z movement)
     broadcastPosition();
@@ -1197,7 +1244,6 @@ function createScene(data) {
         // THAT'S IT FOR SETUP - THE REST IS AUTONOMOUS
         //
 
-    });
 }
 
 
@@ -1346,6 +1392,12 @@ function animate(delta) {
             player.position.z = 60;
             player.standing_on_velocity = new THREE.Vector3(0,0,0);
         }
+        if(isKeyDown(KEYCODE['9'])){ //Hop up
+            player.position.z = 60;
+            player.velocity.z = 0;
+            player.standing_on_velocity = new THREE.Vector3(0,0,0);
+        }
+
         
         if(isKeyDown(KEYCODE['1'])){ //Artificial power up
             player.setPower(0);
@@ -1420,6 +1472,7 @@ function animate(delta) {
     
     
     // Animate moving entities:
+    level.animate(delta);
     for(var k=0; k < moving_entities.length; k++){
 	var item = moving_entities[k];
 	item.animate(delta); //Call the method on the entity
@@ -1551,16 +1604,18 @@ function onMouseMove(e) {
 
     // Update camera position for vertical adjustments
     camera.position.set(camera.position.x, x, y);
-
+    
+    
+    //---- Avoiding camera collision with ground ----
     // Check if there is terrain in the line-of-sight to the player
-    var cameraWorldPos = (new THREE.Vector3()).getPositionFromMatrix(camera.matrixWorld),
-        origin = player.position.clone(),
-        direction = cameraWorldPos.clone().sub(origin),
-        r = new THREE.Raycaster(origin, direction, 0, radius + 1),
-        c = r.intersectObjects([ ground, water, hills ], true);
+    //var cameraWorldPos = (new THREE.Vector3()).getPositionFromMatrix(camera.matrixWorld),
+        //origin = player.position.clone(),
+        //direction = cameraWorldPos.clone().sub(origin),
+        //r = new THREE.Raycaster(origin, direction, 0, radius + 1),
+        //c = r.intersectObjects([ ground, water, hills ], true);
 
     // CAMERA-LOS-GROUND-PLAYER collision!
-    if (c.length > 0) {
+    //if (c.length > 0) {
 
         // FIXME: Adjust camera position so it does not collide with terrain
         // I tried to move the camera in to the point where the collision occurs,
@@ -1568,7 +1623,7 @@ function onMouseMove(e) {
         // so it's on the list to fix for another day.
 
         // Point in which the camera LoS intersects the ground mesh
-        var localCamPos = player.worldToLocal(c[0].point) ; //,
+        //var localCamPos = player.worldToLocal(c[0].point) ; //,
             //length = localCamPos.length(),
             //newLength = length - 1,
             //newLocalCamPos = localCamPos.normalize().multiplyScalar(newLength);
@@ -1579,7 +1634,7 @@ function onMouseMove(e) {
         //camera.position.copy(localCamPos);
         //camera.position.copy(newLocalCamPos);
 
-    }
+    //}
 
     // Apply the camera offset to the new position
     camera.position.add(cameraOffset);
@@ -2556,7 +2611,7 @@ function jumpingOrFallingPlayerZ(specificPlayer) {
 function initPlayerZ(specificPlayer) {
     var p = specificPlayer || player;
     // Attempt to intersect the ground
-    var z = intersectGround(p.position.x, p.position.y); //Gets the position of the terrain at user's X & Y
+    var z = level.get_terrain_z(p.position.x, p.position.y, false); //Gets the position of the terrain at user's X & Y
     if (z != null) {
         // Apply a 1 unit diff to the position, to accommodate the player model
         var diff = z - p.position.z + 1; //Work out the difference between player and the ground
