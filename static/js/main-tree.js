@@ -78,7 +78,7 @@ var level_contents = {
 
 var DEBUG = true; //Debug mode
 var level; //Where we'll store our level
-var sandbox = true; //Whether to build our debug environment
+var sandbox = false; //Whether to build our debug environment
 
     // screen size
 var SCREEN_WIDTH = window.innerWidth,
@@ -1319,7 +1319,7 @@ function animate(delta) {
 	//Smart motion with velocity:
         //playerMoved = moveIfInBounds(player.velocity.x*delta, player.velocity.y*delta, player.velocity.z*delta) || playerMoved; //Original motion conditionals
         //mu = moveIfInBounds2(delta); //Improved collision detection. Detects if you have collided with something, if so undoes the movement you just did and resets the velocities to suit. Returns the friction coefficient of what you are standing on!
-        mu = player.move_according_to_velocity(delta, level); //Try out our new player object method... NOT WORKING :-(
+        mu = player.move_according_to_velocity2(delta, level); //Try out our new player object method...
     	
     	playerMoved = player.hasMoved; //Monkey patched property
         if(player.hasMoved){ //Quick detection to ensure we don't touch things until properly init

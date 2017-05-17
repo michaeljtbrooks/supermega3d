@@ -1265,7 +1265,11 @@ SuperMega.Player.prototype.build_rays = function(){
                 "centre" : [new THREE.Vector3(0,0,0)],
                 "stepup" : [new THREE.Vector3(.5,0,(-1*(this.STEPUP_AMOUNT))), new THREE.Vector3(-.5,0,(-1*(this.STEPUP_AMOUNT)))],
                 "bottom" : [new THREE.Vector3(.5,0,-1), new THREE.Vector3(-.5,0,-1)]
-            } //The direction is given by THREE.Vector3(0,to_move_y,0).normalize()
+            }, //The direction is given by THREE.Vector3(0,to_move_y,0).normalize()
+            "z" : {
+                //           0=Leftback                       1=Leftfront               2=rightback                 3=rightfront
+                "axial" : [new THREE.Vector3(.5,.5,0),new THREE.Vector3(.5,-.5,0),new THREE.Vector3(-.5,.5,0),new THREE.Vector3(-.5,-.5,0)],
+            } //The direction is given by THREE.Vector3(0,0,to_move_z).normalize()
         };
         this.axis_directions = {
             "x" : new THREE.Vector3(1,0,0),
@@ -1304,9 +1308,12 @@ SuperMega.Player.prototype.drawRay = function(level, id, origin, direction, dist
     }
 }
    
-SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move, axis, target_objects, internal){
+SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move, axis, target_objects, relative_direction){
     /**
      * Returns the collisions in the direction given, for the axis given, assuming the player's position
+     * 
+     * NO interpretation is done on the consequences of the player's position or velocity. That's for the outer
+     * loop to sort out.
      * 
      * @param to_move: <float> The amount we are intending to move by (sets ray length)
      * @param axis: <str>"x"|"y"|"z" Which axis we are looking at
@@ -1332,29 +1339,38 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
     //Sanitise inputs:
     vector_to_move = vector_to_move || 0.0;
     target_objects = target_objects || this.level.collidables;
-    internal = internal || false;
+    relative_direction = relative_direction || 1; //Assume going positive unless we say otherwise
+    
+    //Resolve beam direction
+    
+    var internal = true;
     
     var thisplayer = this; //Allows us to get back to obj when inside a jquery loop
 
     var output = {
-        "collisions" : {},
-        "min_collision" : null,
-        "collision_distances" : {},
-        "min_collision_distance" : Infinity,
-        "will_collide" : null,
-        "will_stepup" : 0.0,
+        "collisions" : {}, //Collision objects, sorted into their group_names. collision.distance is uncorrected.
+        "min_collision" : null, //The closest collision object. Collision.distance is uncorrected
+        "collided_with": false, //Closest object you have been deemed to have collided with
+        "collision_distances" : {}, //Corrected collision distances, organised by group_name
+        "min_collision_distance" : Infinity, //The closest collision distance (corrected)
         "stepup_begins_distance" : Infinity, //When you will touch the bottom of a slope
         "stepup_gradient" : 0.0, //Default to "don't adjust Z" please!
-        "x_gradient" : 0.0, //Default to "don't adjust Z" please!
-        "y_gradient" : 0.0, //Default to "don't adjust Z" please!
-        "axis_move":0.0, //Adjusted movement distance in-dimension (x or y axis) recommended, negative means opposite your direction
+        "x_gradient" : 0.0, //For z-axis rays, what is the tilt of the floor in the x-axis?
+        "y_gradient" : 0.0, //For z-axis rays, what is the tilt of the floor in the y-axis?
+        "axis_move":Math.abs(vector_to_move), //Adjusted movement distance in-dimension (x or y axis) recommended, negative means opposite your direction
         "z_move":0.0, //Adjusted movement distance in Z-coordinates recommended (calculated from stepup gradient etc)
+        "hit_touchables": [], //Touchable objects you have come into contact with
+        "vector_to_move" : vector_to_move
     };
     
     var ray_points = thisplayer.new_rays[axis];
     var point_to_edge_distance = thisplayer.axis_point_to_edge_distances[axis];
     var direction = thisplayer.axis_directions[axis];
-    var scaled_direction = new THREE.Vector3(direction.x * vector_to_move, direction.y * vector_to_move, direction.z * vector_to_move); //Ensures our rays are pointing in the direction you wish to move
+    if(vector_to_move!=0){
+        var scaled_direction = new THREE.Vector3(direction.x * vector_to_move, direction.y * vector_to_move, direction.z * vector_to_move); //Ensures our rays are pointing in the direction you wish to move
+    }else{
+        var scaled_direction = new THREE.Vector3(direction.x * relative_direction, direction.y * relative_direction, direction.z * relative_direction); //Ensures our rays are pointing in the direction you wish to move
+    }
     var to_move = Math.abs(vector_to_move); //Get a scalar of the movement
     
     if(!direction || !ray_points){
@@ -1376,6 +1392,8 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
         //Modify the max distance of the ray for the stepup rays only:
         if(group_name=="stepup"){
             thisplayer.caster.far = 10*thisplayer.STEPUP_AMOUNT + to_move + point_to_edge_distance; //Means we won't miss v shallow gradients ahead of you 
+        } else if(axis=="z"){ //For us to grab gradients, need to cast further
+            thisplayer.caster.far = 5*thisplayer.STEPUP_AMOUNT + to_move + point_to_edge_distance; //Means we won't miss v shallow gradients ahead of you
         } else {
             thisplayer.caster.far = to_move+point_to_edge_distance;
         }
@@ -1427,6 +1445,8 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
         //First is the whole movement illegal? (if Min(top_dist), or Min(centre) < to_move, then it is)
         if(min_top_collisions < to_move || min_centre_collisions < to_move){ //Means you've hit your head or body
             output.axis_move = Math.min(min_top_collisions, min_centre_collisions); //Move up to the nearest moment you hit your head (might even be backwards!)
+            output.collided_with = output.min_collision; //Snap the closest object you hit
+            console.log("Side beam collision");
         } else if(min_stepup_collisions < to_move || min_bottom_collisions < to_move){ //Means we need to do futher work
             //We will at some point in the path, hit an edge or a slope.
             var slope_horizontal = min_stepup_collisions - min_bottom_collisions; //This is where having extra long stepup rays matter
@@ -1437,6 +1457,7 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
             if(slope_grad > thisplayer.POWER_STATES["max_gradient"][thisplayer.power_state]){
                 //Sorry chump, slope too steep, you can only move up to start of the slope
                 output.axis_move = Math.min(min_bottom_collisions,min_stepup_collisions); //Takes care of NEGATIVE gradients too (i.e. overhangs)
+                output.collided_with = output.min_collision; //Snap the closest object you hit
                 console.log("Too steep!");
             }else{
                 //Not too steep, you can ascend the slope
@@ -1452,6 +1473,14 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                 //TODO: Check head-hitting here.
             }
         }
+        //Now detect contact with a trap (we'll pick the nearest obj only
+        if(min_top_collisions < to_move || min_centre_collisions < to_move || min_bottom_collisions < to_move){
+            if(typeof output.min_collision !== "undefined"){
+                if(typeof output.min_collision.object.touched !== "undefined"){
+                    output.hit_touchables.push(output.min_collision.object); //Add our touchable object to the output dict
+                }
+            }
+        }
     } 
     else if(axis=="z") 
     { //Different behaviour here (NB: you could use similar gradient logic to implement sliding!!)
@@ -1459,39 +1488,42 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
         var shortest_dist = output.min_collision_distance;
         var shortest_vertex_index = output.collision_distances["axial"].indexOf(shortest_dist); //Finds which vertex has the shortest path to the object
         var vertex_collisions = output.collision_distances["axial"];
-        if(shortest_vertex_index==0){ //Depth of the player is flipped with height, remember? (Y -> Z)
-            var x_grad = (vertex_collisions[2] - shortest_dist)/this.geometry.width;
-            var y_grad = (vertex_collisions[1] - shortest_dist)/this.geometry.height;
-        } else if(shortest_vertex_index==1){ 
-            var x_grad = (vertex_collisions[3] - shortest_dist)/this.geometry.width;
-            var y_grad = (0-(vertex_collisions[0] - shortest_dist))/this.geometry.height;
-        } else if(shortest_vertex_index==2){ 
-            var x_grad = (0-(vertex_collisions[0] - shortest_dist))/this.geometry.width;
-            var y_grad = (vertex_collisions[3] - shortest_dist)/this.geometry.height;
-        } else if(shortest_vertex_index==3){ 
-            var x_grad = (0-(vertex_collisions[1] - shortest_dist))/this.geometry.width;
-            var y_grad = (0-(vertex_collisions[2] - shortest_dist))/this.geometry.height;
+        if(shortest_dist <= to_move+1*thisplayer.PLATFORM_GRACE){ //Only return gradients if the surface is close
+            if(shortest_vertex_index==0){ //Depth of the player is flipped with height, remember? (Y -> Z)
+                output.x_gradient = (vertex_collisions[2] - shortest_dist)/this.geometry.width;
+                output.y_gradient = (vertex_collisions[1] - shortest_dist)/this.geometry.height;
+            } else if(shortest_vertex_index==1){ 
+                output.x_gradient = (vertex_collisions[3] - shortest_dist)/this.geometry.width;
+                output.y_gradient = (0-(vertex_collisions[0] - shortest_dist))/this.geometry.height;
+            } else if(shortest_vertex_index==2){ 
+                output.x_gradient = (0-(vertex_collisions[0] - shortest_dist))/this.geometry.width;
+                output.y_gradient = (vertex_collisions[3] - shortest_dist)/this.geometry.height;
+            } else if(shortest_vertex_index==3){ 
+                output.x_gradient = (0-(vertex_collisions[1] - shortest_dist))/this.geometry.width;
+                output.y_gradient = (0-(vertex_collisions[2] - shortest_dist))/this.geometry.height;
+            }
+            if(output.x_gradient<=-Infinity || output.x_gradient>=Infinity){output.x_gradient=0;} //Ignore nonsense values
+            if(output.y_gradient<=-Infinity || output.y_gradient>=Infinity){output.y_gradient=0;} //Ignore nonsense values
         }
         
-        
-        //##HERE##
         
         //Use the closest to touching floor item to deduce friction:
-        var floor_properties = all_floor_properties[shortest_vertex_index];
         var standing_on = null; //Default to not standing on stuff
         var hit_touchable = null;
-        if(Math.abs(shortest_dist) < 2*this.PLATFORM_GRACE){ //Just come into contact with a platfornm
-            if(this.velocity.z<=0){ //Standing on it
-                standing_on = collided_with_objects[shortest_vertex_index]; //Resolve what you are standing on
-                //console.log(standing_on);
-            }
+        if(shortest_dist <= (to_move+1*this.PLATFORM_GRACE)){ //Just come into contact with a platfornm
+            //Correct the movement to limit it to touching the platform
+            output.axis_move = shortest_dist-1*this.PLATFORM_GRACE; //+(1*this.PLATFORM_GRACE); //Update the z axis movement so you rise to the top of a platform if half sunk in it, or bash your head if jumping
+            output.collided_with = output.min_collision; //Ensure we log this as a bonafide collision
             //Add in any traps etc with "touched" methods
-            if(typeof collided_with_objects[shortest_vertex_index] !== "undefined"){
-                if(typeof collided_with_objects[shortest_vertex_index].object.touched !== "undefined"){
-                    var hit_touchable = collided_with_objects[shortest_vertex_index].object;
+            if(typeof output.min_collision !== "undefined"){
+                if(typeof output.min_collision.object.touched !== "undefined"){
+                    output.hit_touchables.push(output.min_collision.object); //Add our touchable object to the output dict
                 }
             }
+        }else{
+            
         }
+        output.z_move = output.axis_move;
     }
     
     //Make our signs consistent (e.g. if moving -y, the to_move should be -y if not colliding)
@@ -1514,22 +1546,113 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
      */
     
     var player = this;
+    
     //First, iterate through the horizontal axes (aligned to player)
-    var verdict = {}
-    $.each(["x","y"], function(index,axis){
+    var verdict = {
+            "z":{},
+            "x":{},
+            "y":{},
+    }
+    
+    //Z-axis goes first:
+    //var vector_to_move = (player.velocity.z + player.standing_on_velocity.z) * delta;
+    //verdict["z"] = player.get_directional_collisions(vector_to_move, "z", level.collidables, 1); //to_move, axis_name, target_objects, relative_direction (if vector zero)
+    var standing_on = false; //Assume you are NOT standing on something
+    
+    //Start with the Z axis... this plays totally differently, we make it absolute:
+    //var vector_to_move = (player.velocity[axis] + player.standing_on_velocity[axis]) * delta;
+    //verdict["z"] = player.get_directional_collisions(vector_to_move, axis, level.collidables, 1); //to_move, axis_name, target_objects, relative_direction (if vector zero)
+    
+    
+    
+    $.each(["z","x","y"], function(index,axis){
+
+        //First, check collisions that are likely to happen IN THE DIRECTION OF TRAVEL
         var vector_to_move = (player.velocity[axis] + player.standing_on_velocity[axis]) * delta;
-        verdict[axis] = player.get_directional_collisions(vector_to_move, axis, level.collidables, true);
-        if(axis=="x"){
+        verdict[axis] = player.get_directional_collisions(vector_to_move, axis, level.collidables, 1); //to_move, axis_name, target_objects, relative_direction (if vector zero)
+        
+        //Check for collisions in the direction of movement 
+        if(axis=="z"){
+            player.translateZ(verdict[axis].axis_move);
+            if(verdict[axis].collided_with){
+                player.velocity.z = 0; //Assume we kill all movement
+            }
+        }else if(axis=="x"){
             player.translateX(verdict[axis].axis_move);
+            //Need to do a "furthest from zero of [x].z_move and [z].x_grad*x_move
+            var resolved_z_move = verdict["z"].x_gradient*verdict["x"].axis_move || verdict["x"].z_move; //Take the first non-zero amount
+            player.translateZ(resolved_z_move); //X may have an affect on Z (gradient ascent)
         }else if(axis=="y"){
             player.translateY(verdict[axis].axis_move);
+            var resolved_z_move = verdict["z"].y_gradient*verdict["y"].axis_move || verdict["y"].z_move; //Take the first non-zero amount
+            player.translateZ(resolved_z_move); //Y may have an affect on Z (gradient ascent)
         }
-        //Tweak our gradient ascender
-        player.translateZ(verdict[axis].z_move);
+        if(verdict[axis].axis_move){
+            player.hasMoved = true;
+        }
+        
+        //Now check for any collisions in the OPPOSITE direction (the player has since been updated!)
+        if(false){
+            var axis_minus = axis+"_minus";
+            verdict[axis_minus] = player.get_directional_collisions(0, axis, level.collidables, -1); //Shoot beams in opposite direction
+            //Now apply the effects of those collisions
+            if(axis_minus=="z_minus"){ //Opposite direction to the one you're moving in
+                player.translateZ(verdict[axis_minus].axis_move);
+            }else if(axis_minus=="x_minus"){
+                player.translateX(verdict[axis_minus].axis_move);
+                //Need to do a "furthest from zero of [x].z_move and [z].x_grad*x_move
+                var resolved_z_move = verdict["z_minus"].x_gradient*verdict["x_minus"].axis_move || verdict["x_minus"].z_move; //Take the first non-zero amount
+                player.translateZ(resolved_z_move); //X may have an affect on Z (gradient ascent)
+            }else if(axis_minus=="y_minus"){
+                player.translateY(verdict[axis_minus].axis_move);
+                var resolved_z_move = verdict["z_minus"].y_gradient*verdict["y_minus"].axis_move || verdict["y_minus"].z_move; //Take the first non-zero amount
+                player.translateZ(resolved_z_move); //Y may have an affect on Z (gradient ascent)
+            }
+        }
+        if(verdict[axis].axis_move){
+            player.hasMoved = true;
+        }
     });
+    //console.log(verdict["z"]);
+    
+    //Velocity decay
+    //Horizontal velocity decay: //TODO: viscous fluids - e.g. drags through water
+    var mu = 0.5; //Standard friction of ground
+    if(verdict["z"].standing_on) { //Only apply friction if we're actually standing on the platform!!
+        var mu = verdict["z"].standing_on.material._physijs.friction; //[z].standing_on is the floor object we are colliding with
+        if(mu<=0 || mu > 10){
+            mu = 0.5;
+        }
+    }
+    this.mu = mu;
+    //Perform self-initiated velocity decay
+    this.velocity.x = this.velocity.x - (this.velocity.x * 20.0 * mu * delta);
+    this.velocity.y = this.velocity.y - (this.velocity.y * 20.0 * mu * delta);
+
+    //Gravity!! - only if not standing
+    if(!standing_on){
+        player.velocity.z -= 9.8 * 10.0 * delta; // 10.0 = mass
+        player.standing = false;
+    }else{
+        player.standing = true;
+        player.isJumping = false;
+        //Adjust the player's velocity to match the platform
+        player.standing_on_velocity.z = standing_on.velocity.z*1; //If truly standing on a platform, match is velocity 
+    }
+    
+    //Update position:
+    player.__dirtyPosition = true;
+    player.__dirtyRotation = true;
+    
+    //Show debug info
+    this.update_debug_stats(verdict["x"].axis_move.toFixed(2), verdict["y"].axis_move.toFixed(2), verdict["z"].axis_move.toFixed(2)+" S:"+player.standing);
+    
+    //Return the friction so the rest of our engine can use it.
+    return mu;
+    
     
     //Let's just see what comes out:
-    console.log("x:"+verdict.x.axis_move.toFixed(2)+" y:"+verdict.y.axis_move.toFixed(2)+" z:"+(verdict.x.z_move+verdict.y.z_move).toFixed(2)+" grad_x:"+verdict.x.stepup_gradient+" grad_y:"+verdict.y.stepup_gradient);
+    //console.log("x:"+verdict.x.axis_move.toFixed(2)+" y:"+verdict.y.axis_move.toFixed(2)+" z:"+(verdict.x.z_move+verdict.y.z_move).toFixed(2)+" grad_x:"+verdict.x.stepup_gradient+" grad_y:"+verdict.y.stepup_gradient);
 }
 SuperMega.Player.prototype.reset = function(options, scene, hud){
         /**
@@ -1612,6 +1735,7 @@ SuperMega.Player.prototype.adjustStandingOnVelocity = function (platformObj){
 SuperMega.Player.prototype.detectCollision = function(otherObjs){
         /**
          * Internal collision detection, uses rays which pass from object centre to vertices. Useful for "after the fact" collision detection
+         * This is buggy and is what is causing the player to "get stuck" if one axis move being negated causes the player to collide in another
          * 
          * @param otherObjs: The list of objects we are testing a collision for
          * 
@@ -2001,7 +2125,7 @@ SuperMega.Player.prototype.move_according_to_velocity = function(delta, level){
                 if(to_move > dist_to_hit.shortest){ //You're gonna hit your head.
                     to_move = dist_to_hit.shortest; //Stop at head impact
                     this.velocity.z = 0; //Set velocity to zero
-                    player.jump_keydown_continuously = false; //Null off the persistent space press
+                    p.jump_keydown_continuously = false; //Null off the persistent space press
                     this.standing = false;
                     if(dist_to_hit.hit_touchable){
                         dist_to_hit.hit_touchable.touched(delta, p, level); //Detect whacking head on trap
@@ -2013,7 +2137,7 @@ SuperMega.Player.prototype.move_according_to_velocity = function(delta, level){
                     to_move = -1 * (dist_to_hit.shortest - this.PLATFORM_GRACE); //Stop just a smidgen before your feet touch the platform
                     this.standing=true;
                     this.isJumping = false;
-                    player.jump_keydown_continuously = false; //Null off the persistent space press
+                    p.jump_keydown_continuously = false; //Null off the persistent space press
                     if(dist_to_hit.hit_touchable){
                         dist_to_hit.hit_touchable.touched(delta, p, level); //Detect whacking head on trap
                     }
