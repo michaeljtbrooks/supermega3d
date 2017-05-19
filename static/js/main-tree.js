@@ -24,7 +24,7 @@
 
 //Add in smart print declaration of values to Vector3
 THREE.Vector3.prototype.str = function(){
-    return "x:"+this.x.toFixed(3)+", y:"+this.y.toFixed(3)+", x:"+this.z.toFixed(3);
+    return "x:"+this.x.toFixed(3)+", y:"+this.y.toFixed(3)+", z:"+this.z.toFixed(3);
 }
 
 /**
@@ -41,7 +41,7 @@ THREE.Vector3.prototype.applyZRotation3 = function(a){
 }
 
 THREE.Euler.prototype.str = function(){
-    return "x:"+this.x.toFixed(3)+", y:"+this.y.toFixed(3)+", x:"+this.z.toFixed(3);
+    return "x:"+this.x.toFixed(3)+", y:"+this.y.toFixed(3)+", z:"+this.z.toFixed(3);
 }
 
 
@@ -63,13 +63,27 @@ var DEG90 = Math.PI/2;
 var level_contents = {
         0:{ //Our first level
             "platforms" : [
-                {"size":[10,30,2], "position":[0,10,-5]},
-                {"size":[10,20,2], "position":[0,33,-0.5], "orientation":[DEG30,0,0]},
-                {"size":[20,10,2], "position":[5,46.5,4.5], "orientation":[0,0,0]},
-                //Trap
-                {"size":[10,10,2], "position":[30,46.5,-0.5], "orientation":[0,0,0], "translation":[0,0,10], "translation_mode":"reciprocating", "magnitude":50},
+                {"size":[10,30,2], "position":[0,10,-5]}, //Flat start
+                {"size":[10,20,2], "position":[0,33,-0.5], "orientation":[DEG30,0,0]}, //Ramp up
+                {"size":[3,3,10], "position":[-10,15,-0.5], "orientation":[0,0,0], "translation":[10,5,0], "translation_mode":"reciprocating", "magnitude":20}, //Moving pillar
+                {"size":[20,10,2], "position":[5,46.5,4.5], "orientation":[0,0,0]}, //Higher horizontal
+                {"size":[10,10,2], "position":[30,46.5,-0.5], "orientation":[0,0,0], "translation":[0,0,10], "translation_mode":"reciprocating", "magnitude":50}, //Vertical lift
+                {"size":[20,10,2], "position":[5,46.5,40], "orientation":[0,0,0]}, //Upper storey horizontal
+                {"size":[10,10,2], "position":[-10,56.5,40], "orientation":[0,0,0], "translation":[0,-10,0], "translation_mode":"reciprocating", "magnitude":20}, //Upper storey sideways moving platform
+                {"size":[10,10,2], "position":[-20,36.5,40], "orientation":[0,0,0], "translation":[0,10,0], "translation_mode":"reciprocating", "magnitude":20}, //Upper storey sideways moving platform #2
+                {"size":[40,10,2], "position":[-50,46.5,40], "orientation":[0,0,0]}, //Upper storey horizontal to end
             ],
-            "start_position": new THREE.Vector3(0,0,2),
+            "traps" : [
+                {"size":[10,10,2], "position":[20,46.5,4.5], "orientation":[0,0,0]}
+            ],
+            "noms" : [
+                {"position":[-10,56.5,42]}, //Nom on upper platform sideways mover #1 
+                {"position":[-20,36.5,42]} //Nom on upper platform sideways  mover #2
+            ],
+            "ends" : [
+                {"position":[-68,46.5,42], "orientation":[0,0,DEG90], "noms_required":2}, //The end  
+            ],
+            "start_position": new THREE.Vector3(0,0,2), //Where player starts
             "start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
         }
 };
@@ -1005,11 +1019,12 @@ function createScene(data) {
         steep_platform.material.color.setHex(0xDD33CC); //Pink platform
         
         //Now a huuuuge fucker to test our motions
-        addMovingPlatform({
+        level.add_platform({
     	"translation" : new THREE.Vector3(20,20,0),
     	"translation_mode" : "reciprocating",
     	"magnitude" : 60,
-    	"size" : [30,30,100]
+    	"size" : [30,30,100],
+    	"position" : "random"
         });
     
         
@@ -1139,19 +1154,18 @@ function createScene(data) {
             }
             
             // Drop trees where the server said to do so
-            console.log("Adding trees:");
-            console.log(level.collidables); //See what we've got
             for(var i in data.trees) {
                 level.add_tree({
                         "position" : {"x":data.trees[i].x, "y":data.trees[i].y, "z":null},
                         "rotation" : {"x":null, "y":null, "z":data.trees[i].rotation}
                 });
             }
-            console.log(level.collidables); //See what we've got
+            
         });
         
-        //Store the collidable entities:
-        //all_collidables = $.merge(all_platforms, all_trees);
+        //Compile all collidables
+        level.recompile_obstacles();
+        all_collidables = $.merge(all_platforms, all_trees);
         
         
         //Now resolve the starting position
