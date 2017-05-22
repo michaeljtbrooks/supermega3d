@@ -20,6 +20,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+THREE.Geometry.prototype.computeCentroids = function(mesh){
+    /**
+     * Replacing the computeCentroids function which was removed in r68
+     * see: https://stackoverflow.com/questions/25267003/three-js-r68-cant-get-centroids-of-geometries-using-objmtlloader
+     * 
+     * @param mesh: <THREE.Mesh> If supplied will provide centroids in terms of the world
+     * 
+     * @return: <THREE.Vector3> Centroids
+     */
+    mesh = mesh || false;
+    
+    this.computeBoundingBox();
+    var centroid = new THREE.Vector3();
+    centroid.addVectors( this.boundingBox.min, this.boundingBox.max );
+    centroid.multiplyScalar( -0.5 );
+    
+    //If mesh supplied, convert to world coordinates
+    if(mesh){
+        centroid.applyMatrix4(mesh.matrixWorld);
+    }
+    
+    //Store in object
+    this.centroid = centroid;
+    return centroid;
+}
+
+
 THREE.Plane3RandGeometry = function ( width, height, widthSegments, heightSegments ) {
 
     THREE.Geometry.call( this );

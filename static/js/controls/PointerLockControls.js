@@ -1,16 +1,24 @@
 /**
  * @author mrdoob / http://mrdoob.com/
+ * 
+ * Modified by Dr Michael Brooks to work with Physijs!
  */
 
 THREE.PointerLockControls = function ( camera ) {
 
 	var scope = this;
 
-	var pitchObject = new THREE.Object3D();
+	//var pitchObject = new THREE.Object3D(); //Old, THREEjs
+	var pitchObject = new Physijs.BoxMesh( new THREE.CubeGeometry( 2, 2, 2 ), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 }) ); //New invisible box
+	pitchObject.__dirtyPosition = true;
+	pitchObject.__dirtyRotation = true;
 	pitchObject.add( camera );
 
-	var yawObject = new THREE.Object3D();
+	//var yawObject = new THREE.Object3D(); //Old, THREEjs
+	var yawObject = new Physijs.BoxMesh( new THREE.CubeGeometry( 2, 2, 2 ), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 }) ); //Invisible physijs container
 	yawObject.position.y = 10;
+	yawObject.__dirtyPosition = true;
+    yawObject.__dirtyRotation = true;
 	yawObject.add( pitchObject );
 
 	var moveForward = false;

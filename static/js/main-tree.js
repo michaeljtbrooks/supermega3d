@@ -46,7 +46,7 @@ THREE.Euler.prototype.str = function(){
 
 
 // Set physijs's Web Worker script path
-Physijs.scripts.worker = 'js/libs/physijs_worker.js';
+Physijs.scripts.worker = 'js/libs/physijs_worker-r85.js';
 
 // Use Detector.js to display the "womp womp" screen if browser sux
 if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
@@ -482,19 +482,19 @@ function init() {
     // LIGHTS
     //
 
-    // Ambient light is 10%
-    ambient = new THREE.AmbientLight( 0x202020, 10 );
+    // Ambient light is 60%
+    ambient = new THREE.AmbientLight( 0x909090, 0.6 );
     level.add(ambient,"lighting","ambient"); //Adds to the level therefore the scene
 
     // Sun lights (two of them for fun reflective patterns
     // This achieves the appearance/art style I'm going for
-    light = new THREE.DirectionalLight( 0xffe0bb, 1.0 );
-    light2 = new THREE.DirectionalLight( 0xffe0bb, 1.0 );
+    light = new THREE.DirectionalLight( 0xffe0bb, 0.6 );
+    light2 = new THREE.DirectionalLight( 0xffe0bb, 0.6 );
 
     // Moon light to make the "night time" not totally unplayable
     // Stays active during the day too, so essentialyl 3 lights are active
     // during they day cycle
-    moon = new THREE.DirectionalLight( 0x999999, 0.6 );
+    moon = new THREE.DirectionalLight( 0x999999, 0.2 );
 
     // Only the main daylight and moon cast shadows
     light.castShadow = true;
@@ -502,32 +502,32 @@ function init() {
     moon.castShadow = true;
 
     // Update the shadow cameras
-    light.shadowCameraNear = -256;
-    light.shadowCameraFar = 256;
-    light.shadowCameraLeft = -128;
-    light.shadowCameraRight = 128;
-    light.shadowCameraTop = 128;
-    light.shadowCameraBottom = -128;
+    light.shadow.camera.near = -256;
+    light.shadow.camera.far = 256;
+    light.shadow.camera.left = -128;
+    light.shadow.camera.right = 128;
+    light.shadow.camera.top = 128;
+    light.shadow.camera.bottom = -128;
 
-    moon.shadowCameraNear = -256;
-    moon.shadowCameraFar = 256;
-    moon.shadowCameraLeft = -128;
-    moon.shadowCameraRight = 128;
-    moon.shadowCameraTop = 128;
-    moon.shadowCameraBottom = -128;
+    moon.shadow.camera.near = -256;
+    moon.shadow.camera.far = 256;
+    moon.shadow.camera.left = -128;
+    moon.shadow.camera.right = 128;
+    moon.shadow.camera.top = 128;
+    moon.shadow.camera.bottom = -128;
 
     // Don't show the wire lines of the lights
-    // Good for debugging, though
-    light.shadowCameraVisible = false;
-    light2.shadowCameraVisible = false;
-    moon.shadowCameraVisible = false;
+    // Good for debugging, though (now defaults to absence in r85.2)
+    //light.shadowCameraVisible = false;
+    //light2.shadowCameraVisible = false;
+    //moon.shadowCameraVisible = false;
 
     // More shadow configs
-    light.shadowBias = .0001;  // 0.0001
-    light.shadowDarkness = 0.25; // 0.5
-    moon.shadowDarkness = 0.2;
-    light.shadowMapWidth = SHADOW_MAP_WIDTH;
-    light.shadowMapHeight = SHADOW_MAP_HEIGHT;
+    light.shadow.bias = .0001;  // 0.0001
+    //light.shadowDarkness = 0.25; // 0.5
+    //moon.shadowDarkness = 0.2;
+    light.shadow.mapSize.width = SHADOW_MAP_WIDTH;
+    light.shadow.mapSize.height = SHADOW_MAP_HEIGHT;
 
     // Create a light rig so lights rotate in tandum, relative to the core object
     lightRig = new THREE.Object3D();
@@ -566,8 +566,8 @@ function init() {
     containerDiv.appendChild( renderer.domElement );
     renderer.setClearColor( scene.fog.color, 1 );
     renderer.autoClear = false; // This breaks of FF on mac, apparently (v20)
-    renderer.shadowMapEnabled = true;
-    renderer.shadowMapSoft =  true;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.soft =  true;
 }
 
 
@@ -903,7 +903,7 @@ function createScene(data) {
         // Setup the water material, blue, semi-reflective, semi-transparent
         var planeMaterial = new THREE.MeshPhongMaterial({
             color: 0x4D708A,
-            ambient: 0xAFCADE,
+            //ambient: 0xAFCADE,
             specular: 0xf5f5f5,
             shininess: 100,
             transparent: true,
@@ -1211,8 +1211,9 @@ function createScene(data) {
     player._physijs.collision_masks = CollisionMasks.PLAYER;
 
     // Add the player to the scene
-    level.add( player, "players", player.player_id );
-    level.player = player; //Special way to keep track of it!
+    level.add( player, "players", player.player_id ); //Player finally added to scene here
+    level.player = player; //Special way to keep track of the local player!
+    player.on_collision(function(){}); //What happens when the player collides with stuff
 
     // Init the player's sprite
     updatePlayerSprite(playerId);
@@ -1994,7 +1995,7 @@ function createPlaneFromData(data, worldWidth, worldDepth, width, height, materi
     }
 
     // Provision a new three-dimensional plane with the given number of vertices
-    var terrainGeometry = new THREE.Plane3RandGeometry( width, height, worldWidth - 1, worldDepth - 1 );
+    var terrainGeometry = new THREE.Plane3RandGeometry( width, height, worldWidth - 1, worldDepth - 1 ); //Comes from Plane3Geometry.js
 
     // Apply the height map data, multiplier and subtractor to the plane vertices
     for ( var i = 0, l = terrainGeometry.vertices.length; i < l; i ++ ) {
@@ -2236,7 +2237,7 @@ function addTree(x, y, z, rotation) {
     treeLeafBox._physijs.collision_masks = CollisionMasks.TREE;
 
     // Apply the given location to the tree container
-    treeContainer.position = new THREE.Vector3(x, y, zPos);
+    treeContainer.position.set(x, y, zPos);
 
     // Add the child meshes to the container
     treeContainer.add(treeBox);
@@ -2443,13 +2444,13 @@ function addMovingPlatform(options) {
 	    } else {
 	        zPos = z;
 	    }
-	platformObj.position = new THREE.Vector3(xPos,yPos,zPos);
+	platformObj.position.set(xPos,yPos,zPos);
     } else {
 	platformObj.position.copy(final_options.position);
     }
 
     //Set other properties
-    platformObj.rotation = final_options.orientation;
+    platformObj.rotation.setFromVector3(final_options.orientation);
     platformObj.angular_momentum = final_options.angular_momentum;
     platformObj.translation = final_options.translation;
     platformObj.translation_mode = final_options.translation_mode;

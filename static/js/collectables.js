@@ -34,6 +34,9 @@ THREE.Euler.prototype.str = function(){
 }
 var ZERO_VECTOR3 = new THREE.Vector3(0,0,0); //Zero vector for resetting vectors
 
+//Since upgrading THREE to v85.2, there have been some changes!
+THREE.CubeGeometry = THREE.BoxGeometry;
+
 
 
 //SuperMega Namespace
@@ -799,7 +802,7 @@ SuperMega.Level.prototype.add_tree = function(options){
             treeLeafBox._physijs.collision_masks = SuperMega.CollisionMasks.TREE;
     
             // Apply the given location to the tree container
-            treeContainer.position = new THREE.Vector3(x, y, zPos);
+            treeContainer.position.set(x, y, zPos);
     
             // Add the child meshes to the container
             treeContainer.add(treeBox);
@@ -1079,7 +1082,6 @@ SuperMega.Player = function (options, scene, hud){
     //Create material
     var player_material = new THREE.MeshPhongMaterial({
         color: options.color,
-        ambient: options.color,
         specular: 0x050505,
         shininess: 100
     });
@@ -1112,7 +1114,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
     constructor: SuperMega.Player,
     
     //Constants:
-    POWER_COLOURS: ["0xAA0000","0xBB8800","0xE0E000","0xEAEAEA"],
+    POWER_COLOURS: [0xAA0000,0xBB8800,0xE0E000,0xEAEAEA],
     PLATFORM_GRACE: 0.15, //How close you need to be to the platform to be regarded as "standing on it"
     STEPUP_AMOUNT: 0.4, //What size of z can your character step up onto (NB your height is 2) 
     POWER_STATES: {
@@ -1153,6 +1155,19 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
     debug_rays: {}
 });
 //Methods:
+SuperMega.Player.prototype.on_collision = function(callback){
+    /**
+     * Adds a collision listener to the player which will call the callback function
+     * with the arguments callback(other_object, relative_velocity, relative_rotation, contact_normal)
+     * 
+     * @param callback: <Function> The function which will be called on collision
+     * 
+     */
+    console.log("Collision event loaded");
+    this.addEventListener( 'collision', function( other_object, relative_velocity, relative_rotation, contact_normal ) {
+        console.log("Hit something: "+other_object.uuid);
+    });
+}
 SuperMega.Player.prototype.build_rays = function(){
         /**
          * Creates the collision detection rays
@@ -1333,7 +1348,7 @@ SuperMega.Player.prototype.drawRay = function(level, id, origin, direction, dist
     }
 }
    
-SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move, axis, target_objects){
+SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move, axis, target_objects, input, is_terrain){
     /**
      * Returns the collisions in the direction given, for the axis given, assuming the player's position
      * 
@@ -1345,7 +1360,8 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
      *     "x"|"y"|"z" Movements in the positive axis direction
      *     "x_minus"|"y_minus"|"z_minus" Movements in the negative axis direction 
      *     If the proposed movement is opposite to the axis direction, then the output movement will be zero 
-     * @param included_objects: [<array>collidables,debris] the list of items to test against 
+     * @param included_objects: [<array>collidables,debris] the list of items to test against
+     * @keyword input: {} A dict from a previous run of this function
      * 
      * 
      * @return: { //Collision summary:
@@ -1368,14 +1384,7 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
     var thisplayer = this; //Allows us to get back to obj when inside a jquery loop
     vector_to_move = vector_to_move || 0.0;
     target_objects = target_objects || this.level.collidables;
-    
-    //Resolve beam direction    
-    var internal = true;
-    var direction = thisplayer.axis_directions[axis].clone();
-    var axis_dimension = axis.charAt(0); //The first letter of our input axis name
-    var direction_component = direction[axis_dimension]; //Quick way of seeing which way we are moving by taking the first letter of the axis declaration (z_minus > z)
-
-    var output = {
+    var output = input || {
         "collisions" : {}, //Collision objects, sorted into their group_names. collision.distance is uncorrected.
         "min_collision" : null, //The closest collision object. Collision.distance is uncorrected
         "collided_with": false, //Closest object you have been deemed to have collided with
@@ -1391,6 +1400,20 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
         "vector_to_move" : vector_to_move,
         "ray_direction" : null
     };
+    var is_terrain = is_terrain || false; //Assume its not terrain
+    
+    //Don't check terrain in any direction other than down
+    if(is_terrain && axis!="z_minus"){
+        return output;
+    }
+    
+    //Resolve beam direction    
+    var internal = true;
+    var direction = thisplayer.axis_directions[axis].clone();
+    var axis_dimension = axis.charAt(0); //The first letter of our input axis name
+    var direction_component = direction[axis_dimension]; //Quick way of seeing which way we are moving by taking the first letter of the axis declaration (z_minus > z)
+
+
     
     var ray_points = thisplayer.new_rays[axis]; //Where the rays will originate from
     var point_to_edge_distance = thisplayer.axis_point_to_edge_distances[axis]; //Distance from point to edge of character
@@ -1398,6 +1421,9 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
     var to_move = 0.0;
     if(relative_to_move<0.0){ //This means we are moving in an OPPOSITE direction to the ray. We will NOT allow a translation in that axis for this direction
         to_move = 0;
+        if(is_terrain){ //Optimising: Terrain doesn't move. So stop checking rays in the direction opposite our movement! 
+            return output;
+        }
     }else{
         to_move = Math.abs(vector_to_move); //Get a scalar of the movement, because rays have outwards as positive
     } 
@@ -1419,28 +1445,43 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
     //The default behaviour is for the output to match the to_move:
     output.axis_move = to_move; //Will be flipped to negative later
     
+    
+    
     //Create rays and log collisions
     $.each(ray_points, function(group_name, ray_group){
+        var ray_length_multiplier = 5;
+        if(is_terrain){ //Raycast testing versus a heightmap is proper slow, so bin rays we don't care about
+            if(group_name=="top" || group_name=="centre"){ //Bin top and central rays
+                return true; //This is a continue
+            }
+            var ray_length_multiplier = 1; //Optimisation, use only short rays
+        }
         //Set up loop vars:
-        output.collisions[group_name] = [];
-        output.collision_distances[group_name] = [];
+        output.collisions[group_name] = output.collisions[group_name] || []; //Permits concatenation from earlier runs
+        output.collision_distances[group_name] = output.collision_distances[group_name] || [];
         //Modify the max distance of the ray for the stepup rays only:
         if(group_name=="stepup"){
-            thisplayer.caster.far = 5*thisplayer.STEPUP_AMOUNT + to_move + point_to_edge_distance; //Means we won't miss v shallow gradients ahead of you 
+            thisplayer.caster.far = ray_length_multiplier*thisplayer.STEPUP_AMOUNT + to_move + point_to_edge_distance; //Means we won't miss v shallow gradients ahead of you 
         } else { //Everything else has a decent look about but with to_move added just in case the char is moving very fast
-            thisplayer.caster.far = 5*thisplayer.STEPUP_AMOUNT + to_move + point_to_edge_distance; //I've set this as fixed now
+            thisplayer.caster.far = ray_length_multiplier*thisplayer.STEPUP_AMOUNT + to_move + point_to_edge_distance; //I've set this as fixed now
         }
         
         $.each(ray_group, function(ray_index, ray_point){
             var local_point = ray_point.clone(); //Grab the point on the surface of the player
             var global_point = local_point.applyMatrix4(thisplayer.matrixWorld); //Turn into global position
             thisplayer.caster.set(global_point, global_direction.clone().normalize()); //Set a ray with appropriate direction ??WHAT ABOUT SIZE of Ray??
-            if(DEBUG || true){ 
-                thisplayer.drawRay(level, String(axis)+String(group_name)+ray_index, global_point, global_direction.clone().normalize(), thisplayer.caster.far);
-            }
             
             //Check for collisions
-            var collision_results = thisplayer.caster.intersectObjects(target_objects); //See what the outgoing rays hit
+            if(!is_terrain){ //Objects are not terrain. The most efficient algorithm will be intersectObjects
+                var collision_results = thisplayer.caster.intersectObjects(target_objects); //See what the outgoing rays hit
+            } else { //Objects ARE terrain. The most efficient algorithm will be intersectPlane();
+                var collision_results = thisplayer.caster.intersectObjects(target_objects); //TODO: improve efficiency
+                if(DEBUG || true){ 
+                    thisplayer.drawRay(level, String(axis)+String(group_name)+ray_index, global_point, global_direction.clone().normalize(), thisplayer.caster.far);
+                }
+            }
+            
+            //Process collisions
             if ( collision_results.length > 0 ) { //Means this ray collided
                 $.each(collision_results, function(index, collision){ //Iterate through all the collisions, deliberately ignore the player
                     if(collision.object.geometry.uuid == thisplayer.geometry.uuid){ //Skip this own player object!!
@@ -1460,6 +1501,8 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                     //Store all valid collisions
                     output.collisions[group_name].push(collision);
                     output.collision_distances[group_name].push(corrected_collision_distance);
+                    //Seeing as we have the closest collision for this ray, we can stop processing now!
+                    return false; //AKA break;
                 });
             }else{ //The beam has collided with NOTHING
                 output.collisions[group_name].push(null);
@@ -1482,7 +1525,6 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
         if(min_top_collisions < relative_to_move || min_centre_collisions < relative_to_move){ //Means you've hit your head or body
             output.axis_move = Math.min(min_top_collisions, min_centre_collisions); //Move up to the nearest moment you hit your head (might even be backwards!)
             output.collided_with = output.min_collision.object; //Snap the closest object you hit
-            console.log("Side beam collision");
         } else if(min_stepup_collisions < relative_to_move || min_bottom_collisions < relative_to_move){ //Means we need to do futher work
             //We will at some point in the path, hit an edge or a slope.
             var slope_horizontal = min_stepup_collisions - min_bottom_collisions; //This is where having extra long stepup rays matter
@@ -1505,7 +1547,6 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                     console.log("NaN!! "+slope_vertical+"/"+slope_horizontal+"");
                     output.z_move = thisplayer.STEPUP_AMOUNT;
                 }
-                console.log("Ascending: "+output.z_move.toFixed(2));
                 //TODO: Check knock-on head-hitting here.
             }
         }
@@ -1538,8 +1579,8 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                 output.x_gradient = (0-(vertex_collisions[1] - shortest_dist))/this.geometry.width;
                 output.y_gradient = (0-(vertex_collisions[2] - shortest_dist))/this.geometry.height;
             }
-            if(output.x_gradient<=-Infinity || output.x_gradient>=Infinity){output.x_gradient=0;} //Ignore nonsense values
-            if(output.y_gradient<=-Infinity || output.y_gradient>=Infinity){output.y_gradient=0;} //Ignore nonsense values
+            if(output.x_gradient<=-Infinity || output.x_gradient>=Infinity || isNaN(output.x_gradient)){output.x_gradient=0;} //Ignore nonsense values
+            if(output.y_gradient<=-Infinity || output.y_gradient>=Infinity || isNaN(output.y_gradient)){output.y_gradient=0;} //Ignore nonsense values
         }
         
         
@@ -1556,7 +1597,7 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                     output.hit_touchables.push(output.min_collision.object); //Add our touchable object to the output dict
                 }
             }
-        }else{
+        }else{ //No contact with a platform
             
         }
         output.z_move = output.axis_move;
@@ -1586,8 +1627,11 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
     //First, iterate through the horizontal axes (aligned to player)
     var verdict = {
             "z":{},
+            "z_minus":{},
             "x":{},
+            "x_minus":{},
             "y":{},
+            "y_minus":{},
     }
     
     //Z-axis goes first:
@@ -1598,14 +1642,16 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
     //Start with the Z axis... this plays totally differently, we make it absolute:
     //var vector_to_move = (player.velocity[axis] + player.standing_on_velocity[axis]) * delta;
     //verdict["z"] = player.get_directional_collisions(vector_to_move, axis, level.collidables, 1); //to_move, axis_name, target_objects, relative_direction (if vector zero)
-    
-    $.each(["z","z_minus","x","x_minus","y","y_minus"], function(index,axis){
+    var axis_list = ["z","z_minus","x","x_minus","y","y_minus"];
+    var side_axis_list = ["x","x_minus","y","y_minus"];
+    $.each(axis_list, function(index,axis){
 
         //First, check collisions that are likely to happen
         var axis_dimension = axis.charAt(0);
         var vector_to_move = (player.velocity[axis_dimension] + player.standing_on_velocity[axis_dimension]) * delta;
         //Put them into our collision function. Will only return an output movement in the current axis IF movement congruent with direction of axis
-        verdict[axis] = player.get_directional_collisions(vector_to_move, axis, level.terrain_and_collidables); //to_move, axis_name, target_objects
+        verdict[axis] = player.get_directional_collisions(vector_to_move, axis, level.collidables); //to_move, axis_name, target_objects
+        verdict[axis] = player.get_directional_collisions(vector_to_move, axis, level.terrain, verdict[axis], true); //More efficient check vs terrain
         
         //Check for collisions in the direction of movement 
         if(axis_dimension=="z"){
@@ -1621,13 +1667,6 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
             player.translateZ(resolved_z_move); //Y may have an affect on Z (gradient ascent)
         }
         
-        //Handle side-on collisions
-        if(axis_dimension=="x" || axis_dimension=="y"){
-            //Determine the velocity of the platform in the player's axes
-            var object_velocity_rel_player = player.get_player_centric_velocity(verdict[axis].collided_with);
-            //Make the object punt the player
-            //player.velocity[axis_dimension] += object_velocity_rel_player[axis_dimension];
-        }
         
         if(verdict[axis].axis_move){
             player.hasMoved = true;
@@ -1639,11 +1678,35 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
     if(verdict["z_minus"].collided_with){ //You have an object at your feet!
         standing_on = verdict["z_minus"].collided_with;
         player.velocity.z=0; //Stop moving up or down
-        
-    }
+    } 
     if(verdict["z"].collided_with){ //Hit your head!
         player.velocity.z=0; //Stop rising
     }
+    
+    //Resolve being punted sideways by a moving platform:
+    /**
+    * Isn't having the right effect!
+    $.each(side_axis_list, function(index, axis){
+        var axis_dimension = axis.charAt(0);
+        if(axis_dimension=="x" || axis_dimension=="y"){
+            //Determine the velocity of the platform in the player's axes
+            var coll_obj = verdict[axis].collided_with;
+            if(coll_obj){
+                if(coll_obj.uuid != standing_on.uuid){ //Ignore velocity adjustments for stuff you're standing on
+                    //Make the object punt the player, so long as the object is moving towards the player (avoids the bug of the player getting "sucked along")
+                    if(coll_obj.velocity){ //Only test where an object has a velocity property
+                        var object_velocity_rel_player = player.get_player_centric_velocity(coll_obj);
+                        if(player.velocity[axis_dimension] - object_velocity_rel_player[axis_dimension] > 0){
+                            //This means that the player and the platform are going to get mashed
+                            player.velocity[axis_dimension] += object_velocity_rel_player[axis_dimension];
+                        }
+                    }
+                }
+            }
+        }
+    });
+    */
+    
     
     //Resolve touchables (traps etc):
     var all_touched = [];
@@ -1766,8 +1829,9 @@ SuperMega.Player.prototype.get_player_centric_velocity = function(entity){
     //Default to Zero if not supplied
     if(typeof plat_vel == "undefined"){ //No velocity stated
         plat_vel = ZERO_VECTOR3; //It has ZERO velocity.
-    } else {
+    } else { //Convert to velocity in terms of player's orientation
         plat_vel = plat_vel.clone(); //Copy to thing
+        plat_vel = plat_vel.applyZRotation3(this.rotation.z);
     }
     
     return plat_vel;
@@ -1782,12 +1846,7 @@ SuperMega.Player.prototype.adjustStandingOnVelocity = function (platformObj){
         return this.standing_on_velocity.clone();
     }
     var plat_vel = this.get_player_centric_velocity(platformObj);
-    //Now we must adjust the standing on velocity to suit
-    if(!(plat_vel.x == 0 && plat_vel.y==0)){
-        this.standing_on_velocity = plat_vel.applyZRotation3(this.rotation.z); //My own function which does the above
-    } else {
-        this.standing_on_velocity = plat_vel; //Not moving in x or y direction, no need to rotate
-    }
+    this.standing_on_velocity = plat_vel;
     return plat_vel;
 }
 SuperMega.Player.prototype.detectCollision = function(otherObjs){
@@ -2795,7 +2854,7 @@ SuperMega.Interactable = function (options){
     this.ops = ops;     //Store our options globally
     
     //Set up physical location
-    this.position = ops.position;
+    this.position.set(ops.position.x,ops.position.y,ops.position.z); //Since r85.2, position is read-only, so call position.set
     this.orientate(ops.orientation);
     
     //Add the sub objects to it:
