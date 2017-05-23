@@ -1296,8 +1296,15 @@ function render() {
     // Simulate physics
     scene.simulate(delta);
 
+    
+    // Render the background
+    if(level.background_scene){
+        renderer.render( level.background_scene, level.background_camera);
+    }
+
     // Render the changes made this frame
     renderer.render( scene, camera );
+    
 
     // Request the next frame (endless)
     requestAnimationFrame( render );

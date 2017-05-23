@@ -262,6 +262,9 @@ SuperMega.Level = function( scene, level_number, options){
     //Create clock
     this.clock = new THREE.Clock(); //Clock to watch our frames
     
+    //Generate background:
+    this.create_background(options.background || {});
+    
 }
 SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype), {
     constructor: SuperMega.Level,
@@ -284,8 +287,55 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
     //Single properties
     player: null, //The local player object
     nickname: "SuperMega", //The default player's name
-    ball_counter: 0  //The number of balls in the scene
+    ball_counter: 0,  //The number of balls in the scene
+    background_scene: null //The background
 }); //JS inheritance hack part 2
+SuperMega.Level.prototype.create_background = function(options){
+    /**
+     * Create Background
+     * Creates a scene background, which can be an image or colour
+     * 
+     * Populates this.background_scene
+     * 
+     * @param options: { //Allowable options
+     *     color: <THREE.Color>, //The colour of the background
+     *     image: <url>, //The image to render onto the background
+     * } 
+     */
+    //Process inputs
+    options = options || {};
+    options.image = options.image || null;
+    options.colour = options.colour || options.color || 0x87CEEB; //Default to sky blue
+    
+    
+    //Parse options
+    if(options.image){  //An image is required
+        var texture = THREE.ImageUtils.loadTexture( options.image );
+        var bg_material = new THREE.MeshBasicMaterial({
+            map: texture,
+            color: options.color
+        });
+    } else { //Just do a colour
+        var bg_material = new THREE.MeshBasicMaterial({
+            color: options.color
+        });
+    }
+    
+    //Create the mesh
+    var background_mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(2, 2, 0),
+        bg_material
+    );
+    background_mesh.material.depthTest = false;
+    background_mesh.material.depthWrite = false;
+    
+    // Create your background scene
+    this.background_scene = new THREE.Scene();
+    this.background_camera = new THREE.Camera();
+    this.background_scene.add(this.background_camera);
+    this.background_scene.add(background_mesh);
+    
+}
 //Now we override add() to allow us to add it to a category for easy tracking:
 SuperMega.Level.prototype._scene_action = function(action, obj, category_name, index_name){
         /**
