@@ -10,11 +10,14 @@
  * Last Updated: 2017-05-14 15:50 UTC 
  */
 
+var DEBUG = true;
+
+
 //Expanding on THREEjs:
 //Add in smart print declaration of values to Vector3
 THREE.Vector3.prototype.str = function(){
     return "x:"+this.x.toFixed(3)+", y:"+this.y.toFixed(3)+", x:"+this.z.toFixed(3);
-}
+};
 
 /**
  * Applies a rotation to a vector in the Z axis to give that vector in terms of the rotated object
@@ -27,16 +30,26 @@ THREE.Vector3.prototype.applyZRotation3 = function(a){
     out_vector.y = this.y * Math.cos(a) + -this.x * Math.sin(a); //For rotational matrices we use -(sin A)  on the second axis
     out_vector.z = this.z; //Yep, it's simply (0,0,1) for that rotational matrix!
     return out_vector;
-}
+};
 
 THREE.Euler.prototype.str = function(){
     return "x:"+this.x.toFixed(3)+", y:"+this.y.toFixed(3)+", z:"+this.z.toFixed(3);
-}
+};
 var ZERO_VECTOR3 = new THREE.Vector3(0,0,0); //Zero vector for resetting vectors
+var ZERO_EULER = new THREE.Euler(0,0,0); //Zero Euler for resetting rotations
 
 //Since upgrading THREE to v85.2, there have been some changes!
 THREE.CubeGeometry = THREE.BoxGeometry;
 
+
+var D = function(str_msg){
+	/**
+	 * Debug messages
+	 */
+	if(DEBUG){
+		console.log(str_msg);
+	}
+};
 
 
 //SuperMega Namespace
@@ -59,15 +72,15 @@ SuperMega.OBJECT_PRESETS = {
         "color": 0xAAEEFF,
         "transparent": true,
         "opacity": 0.6,
-        "friction": .1, //v low friction
-        "restitution": .4 //low restitution
+        "friction": 0.1, //v low friction
+        "restitution": 0.4 //low restitution
     },
     "ground_terrain" : {
         "color": 0x557733,
         "transparent": false,
         "opacity": 1,
         "liquid": false,
-        "multiplier": .25,
+        "multiplier": 0.25,
         "subtractor": 6,
     },
     "hills_terrain" : {
@@ -75,7 +88,7 @@ SuperMega.OBJECT_PRESETS = {
         "transparent": false,
         "opacity": 1,
         "liquid": false,
-        "multiplier": .75,
+        "multiplier": 0.75,
         "subtractor": 35,
     },
     "water_terrain" : {
@@ -85,7 +98,7 @@ SuperMega.OBJECT_PRESETS = {
         "transparent": true,
         "opacity": 0.5,
         "liquid": true,
-        "multiplier": .1,
+        "multiplier": 0.1,
         "subtractor": 4,
     },
 };
@@ -137,6 +150,10 @@ SuperMega.CollisionMasks = {
 SuperMega.resolve_3d_entity = function(entity, x_or_vector, y, z){
     /**
      * Turns the supplied arguments into a THREE.Vector3 object.
+     * 
+     * 
+     * @memberOf: SuperMega
+     * 
      * Acceptable inputs:
      * 
      *  @param entity: <str> "vector" or "euler"
@@ -145,7 +162,6 @@ SuperMega.resolve_3d_entity = function(entity, x_or_vector, y, z){
      *  @params x_or_vector: <float>
      *      y: <float>
      *      z: <float>
-     *  @param 
      *  
      *  
      *  @return: <THREE.Vector3>
@@ -159,29 +175,32 @@ SuperMega.resolve_3d_entity = function(entity, x_or_vector, y, z){
         return null;
     }
     
-    console.log("Given "+(typeof x_or_vector));
-    console.log(x_or_vector);
+    //console.log("Given "+(typeof x_or_vector));
+    //console.log(x_or_vector);
     
+    var x_amt = 0;
+    var y_amt = 0;
+    var z_amt = 0;
     if(typeof x_or_vector.clone !== "undefined"){ //Has been given a vector to define rotation
-        var x_amt = x_or_vector.x;
-        var y_amt = x_or_vector.y;
-        var z_amt = x_or_vector.z;
+        x_amt = x_or_vector.x;
+        y_amt = x_or_vector.y;
+        z_amt = x_or_vector.z;
     }else if(typeof x_or_vector.push !== "undefined"){ //Has been given an array to define rotation
-        var x_amt = x_or_vector[0] || 0;
-        var y_amt = x_or_vector[1] || 0;
-        var z_amt = x_or_vector[2] || 0;
+        x_amt = x_or_vector[0] || 0;
+        y_amt = x_or_vector[1] || 0;
+        z_amt = x_or_vector[2] || 0;
     }else if(x_or_vector == "random" || x_or_vector == "Random" || typeof x_or_vector=="undefined"){ //Means randomise me!!
-        var amount = y || 0.2*Math.PI;
-        var x_amt = (Math.random()-0.5) * amount; //Tilt 
-        var y_amt = (Math.random()-0.5) * amount;
-        var z_amt = (Math.random()-0.5) * amount;
+        amount = y || 0.2*Math.PI;
+        x_amt = (Math.random()-0.5) * amount; //Tilt 
+        y_amt = (Math.random()-0.5) * amount;
+        z_amt = (Math.random()-0.5) * amount;
     }else{
-        var x_amt = x_or_vector || 0;
-        var y_amt = y || 0;
-        var z_amt = z || 0;
+        x_amt = x_or_vector || 0;
+        y_amt = y || 0;
+        z_amt = z || 0;
     }
     
-    console.log("Resolved "+entity+": "+x_amt+","+y_amt+","+z_amt);
+    //D("Resolved "+entity+": "+x_amt+","+y_amt+","+z_amt);
     
     if(entity=="euler"){ //Return a euler
         return new THREE.Euler(x_amt, y_amt, z_amt);
@@ -224,7 +243,7 @@ SuperMega.Screen = function(level){
         "notificationHud" : $('#hud-notifications ul')
     };
 
-}
+};
 SuperMega.Screen.prototype = Object.assign( {}, {
     constructor: SuperMega.Screen
 });
@@ -309,14 +328,16 @@ SuperMega.Level.prototype.create_background = function(options){
     
     
     //Parse options
+    var texture = null;
+    var bg_material = null;
     if(options.image){  //An image is required
-        var texture = THREE.ImageUtils.loadTexture( options.image );
-        var bg_material = new THREE.MeshBasicMaterial({
+        texture = THREE.ImageUtils.loadTexture( options.image );
+        bg_material = new THREE.MeshBasicMaterial({
             map: texture,
             color: options.color
         });
     } else { //Just do a colour
-        var bg_material = new THREE.MeshBasicMaterial({
+        	bg_material = new THREE.MeshBasicMaterial({
             color: options.color
         });
     }
@@ -335,11 +356,15 @@ SuperMega.Level.prototype.create_background = function(options){
     this.background_scene.add(this.background_camera);
     this.background_scene.add(background_mesh);
     
-}
+};
 //Now we override add() to allow us to add it to a category for easy tracking:
 SuperMega.Level.prototype._scene_action = function(action, obj, category_name, index_name){
         /**
          * SuperMega.Scene._scene_action: adds or removes the specified item
+         * 
+         * @name _scene_action
+         * @function _scene_action
+         * 
          * @param action: The scene function to perform with the obj as an argument (e.g. add(obj))
          * @param obj: The THREE.js or Physijs object to add / remove
          * @keyword category_name: The category this object belongs to e.g. "liquid_terrain"
@@ -402,7 +427,7 @@ SuperMega.Level.prototype._scene_action = function(action, obj, category_name, i
                 }
             } else if(action=="remove") {
                 if(index_name){ //Remove from tracker
-                    var obj = tracker[index_name];
+                    obj = tracker[index_name];
                     delete tracker[index_name];
                 } else {  //Failed to supply an index_name, so it's being removed from the unsorted bin
                     var obj_index = this.unsorted.indexOf(obj);
@@ -422,7 +447,7 @@ SuperMega.Level.prototype._scene_action = function(action, obj, category_name, i
         
         //And add to / remove from the scene:
         this.scene[action](obj);
-}
+};
 SuperMega.Level.prototype.add = function(obj,category_name,index_name){
         /**
          * SuperMega.Scene.add: adds the specified item to the scene
@@ -432,7 +457,7 @@ SuperMega.Level.prototype.add = function(obj,category_name,index_name){
          * @keyword index_name: For trackers based on dicts e.g. "lighting" 
          */
         return this._scene_action("add",obj,category_name,index_name);
-}
+};
 SuperMega.Level.prototype.remove = function(obj,category_name,index_name){
         /**
          * SuperMega.Scene.remove: removes the specified item to the scene
@@ -442,7 +467,7 @@ SuperMega.Level.prototype.remove = function(obj,category_name,index_name){
          * @keyword index_name: For trackers based on dicts e.g. "lighting" 
          */
         return this._scene_action("remove",obj,category_name,index_name);
-}
+};
 SuperMega.Level.prototype.recompile_obstacles = function(){
     /**
      * Simply compounds collidables and terrain into same array:
@@ -450,7 +475,7 @@ SuperMega.Level.prototype.recompile_obstacles = function(){
     //Recalculate our combined collidables:
     this.terrain_and_collidables = $.merge($.merge([], this.terrain), this.collidables);
     return this.terrain_and_collidables;
-}
+};
 SuperMega.Level.prototype.build = function(data){
         /**
          * Constructs a level from the given data
@@ -585,7 +610,11 @@ SuperMega.Level.prototype.build = function(data){
        
         //Recompile:
         this.recompile_obstacles();
-}
+        
+        //Fix start position and rotation:
+        this.start_position = data.start_position || ZERO_VECTOR3;
+        this.start_orientation = data.start_orientation || ZERO_EULER;
+};
 SuperMega.Level.prototype.animate = function(delta){
         /**
          * Animates all contents of the level!
@@ -607,7 +636,7 @@ SuperMega.Level.prototype.animate = function(delta){
                 //console.log(err);
             }
         });
-}
+};
 SuperMega.Level.prototype.add_ball = function(position, force, restitution, playerId, color, ballId) {
         /**
          * Adds a ball to the word with the given appearance and trajectory information
@@ -623,7 +652,7 @@ SuperMega.Level.prototype.add_ball = function(position, force, restitution, play
         var ballGeometry = new THREE.SphereGeometry( 0.25, 6, 6),
             ballMaterial = Physijs.createMaterial(
                 new THREE.MeshLambertMaterial( { color: color, shading: THREE.FlatShading } ),
-                .8, // high friction
+                0.8, // high friction
                 restitution
             ),
             ball = new Physijs.SphereMesh(
@@ -647,7 +676,7 @@ SuperMega.Level.prototype.add_ball = function(position, force, restitution, play
         // apply the force. This makes it fire reliably.
         // Using applyCentralForce was super unreliable for this purpose
         ball.addEventListener( 'ready', function() {
-            ball.applyCentralImpulse(force)
+            ball.applyCentralImpulse(force);
         } );
 
         // Assign ownership and ID
@@ -667,7 +696,7 @@ SuperMega.Level.prototype.add_ball = function(position, force, restitution, play
 
         // Add the ball to the balls collection so I can keep track of it
         //this.balls['p'+playerId+'b'+ballId] = ball;
-}
+};
 SuperMega.Level.prototype.delete_ball_by_id = function(playerId, ballId){
         /**
          * Removes the specified ball from the scene (doesn't require a valid player object!)
@@ -678,10 +707,10 @@ SuperMega.Level.prototype.delete_ball_by_id = function(playerId, ballId){
         var key = 'p'+playerId+'b'+ballId;
 
         // Check if the ball exists and remove it if it exists
-        if (this.balls[key] != null) {
+        if (this.balls[key] !== null) {
             this.remove(this.balls[key], "balls", key); //Syntax is (obj, category, key)
         }
-}
+};
 SuperMega.Level.prototype.ball_watcher = function(socket){
         /**
          * Watches all the balls in a scene, removes ones which have fallen off
@@ -709,16 +738,16 @@ SuperMega.Level.prototype.ball_watcher = function(socket){
                 var source_player_id = level.balls[i].sourcePlayerId;
                 var ball_id = level.balls[i].ballId;
                 level.delete_ball_by_id(ball_obj.sourcePlayerId, ball_obj.ballId); //Actually removes it from the scene
-                console.log("Ball #"+ball_id+" from player #"+source_player_id+" has been removed!");
+                D("Ball #"+ball_id+" from player #"+source_player_id+" has been removed!");
 
                 // Give the player back their ball and update their HUD
                 var player_obj = level.players[source_player_id];
-                console.log(player_obj);
+                //D(player_obj);
                 player_obj.currentBallCount--; 
                 player_obj.hud.currentBallCount.text(maxBallCount - currentBallCount);
             }
         }
-}
+};
 SuperMega.Level.prototype.get_terrain_z = function(x, y, liquids){
         /**
          * Returns the terrain z position at x,y
@@ -748,11 +777,11 @@ SuperMega.Level.prototype.get_terrain_z = function(x, y, liquids){
         // Return the result of the ray casting
         //return r.intersectObjects($.merge([ ground, water, hills ],all_trees), true); //IntersectObjects is an inherent function in THREE.js
         var collisions = r.intersectObjects(terrain_objs, true);
-        if(collisions.length == 0){ //Bail if there is no collision
+        if(collisions.length === 0){ //Bail if there is no collision
             return null;
         }
         return collisions[0].point.z; //Return the topmost terrain layer z
-}
+};
 SuperMega.Level.prototype.random_terrain_position = function(){
         /**
          * Returns a random position in the world which is guaranteed to be sitting on the topmost terrain
@@ -763,7 +792,7 @@ SuperMega.Level.prototype.random_terrain_position = function(){
         var y = (Math.random() * this.world_depth*2) - (this.world_depth / 1);
         var z = this.get_terrain_z(x,y,false);
         return new THREE.Vector3(x,y,z);
-}
+};
 SuperMega.Level.prototype.add_tree = function(options){
     /**
      * Adds a tree to the level
@@ -785,7 +814,7 @@ SuperMega.Level.prototype.add_tree = function(options){
         var zPos = null;
         
         // If no Z was given, z-lock the position to the terrain
-        if (z == null) {
+        if (z === null) {
             // Find the top-most intersection with any terrain layer for the given 2d coords
             zPos = this.get_terrain_z(x, y);
             if(zPos === null){
@@ -805,11 +834,11 @@ SuperMega.Level.prototype.add_tree = function(options){
         tree.receiveShadow = true;
     
         // Apply rotation or generate one if none is given
-        var rnd_rotation_z = rotation != null ? rotation : Math.random() * Math.PI;
+        var rnd_rotation_z = rotation !== null ? rotation : Math.random() * Math.PI;
     
         // Create Container and hit box geometries
-        var treeContainerGeo = new THREE.CubeGeometry(1.25, 1.25, .25, 1, 1, 1),
-            treeBoxGeo = new THREE.CubeGeometry(.742, .742, 5, 1, 1, 1),
+        var treeContainerGeo = new THREE.CubeGeometry(1.25, 1.25, 0.25, 1, 1, 1),
+            treeBoxGeo = new THREE.CubeGeometry(0.742, 0.742, 5, 1, 1, 1),
             treeLeafBoxGeo = new THREE.CubeGeometry(1.38 * 2, 1.64 * 2, 2, 1, 1, 1),
     
             // Invisible hit box material
@@ -819,8 +848,8 @@ SuperMega.Level.prototype.add_tree = function(options){
                     transparent: true,
                     opacity: 0
                 }),
-                .8, // high friction
-                .4 // low restitution
+                0.8, // high friction
+                0.4 // low restitution
             ),
     
             // Parent container which holds hit boxes and tree model
@@ -871,14 +900,14 @@ SuperMega.Level.prototype.add_tree = function(options){
             treeLeafBox.rotation.z = -0.296705973;
     
             // Init hit box positions to model
-            treeBox.position.add(new THREE.Vector3(.25631, .16644, 5.49535 / 2 ));
+            treeBox.position.add(new THREE.Vector3(0.25631, 0.16644, 5.49535 / 2 ));
             treeLeafBox.position.add(new THREE.Vector3(-0.16796, -0.05714, 4.59859));
     
             // Add the complete tree to the scene
             this.collidables.push(treeBox); //We have to add the tree collision boxes separately to the container
             this.collidables.push(treeLeafBox); //If you don't like this, then make it a new class
             this.scene.add(treeContainer, "debris"); //We don't want the object container to be collidable
-}
+};
 SuperMega.Level.prototype.add_platform = function(options){
         /**
          * Creates a platform, which can be moving
@@ -896,12 +925,12 @@ SuperMega.Level.prototype.add_platform = function(options){
          * @param friction: <float> how much friction the platform should have
          * @param restitution: <float> how stiff it should be on collisions
          */
-        console.log("Making platform");
+        D("Making platform");
         options.level = self;
         var platform = new SuperMega.Platform(options); //It's rather easy when you've got a class!!
-        console.log(platform);
+        D(platform);
         this.add(platform, "collidables");
-}
+};
 SuperMega.Level.prototype.add_trap = function(options){
         /**
          * Creates a trap, which can be moving
@@ -922,7 +951,7 @@ SuperMega.Level.prototype.add_trap = function(options){
         options.level = self;
         var trap_platform = new SuperMega.Trap(options); //It's rather easy when you've got a class!!
         this.add(trap_platform, "collidables");
-}
+};
 SuperMega.Level.prototype.add_powerup = function(options){
         /**
          * Creates a power_up, which can be moving
@@ -941,9 +970,9 @@ SuperMega.Level.prototype.add_powerup = function(options){
          * @param restitution: <float> how stiff it should be on collisions
          */
         options.level = self;
-        var pow_up = new SuperMega.PowerUp(options); //It's rather easy when you've got a class!!
+        var pow_up = new SuperMega.Powerup(options); //It's rather easy when you've got a class!!
         this.add(pow_up, "interactables");
-}
+};
 SuperMega.Level.prototype.add_nom = function(options){
         /**
          * Creates a power_up, which can be moving
@@ -964,7 +993,7 @@ SuperMega.Level.prototype.add_nom = function(options){
         options.level = self;
         var nom = new SuperMega.Nom(options); //It's rather easy when you've got a class!!
         this.add(nom, "interactables");
-}
+};
 SuperMega.Level.prototype.add_end = function(options){
         /**
          * Creates a power_up, which can be moving
@@ -986,7 +1015,7 @@ SuperMega.Level.prototype.add_end = function(options){
         var the_end = new SuperMega.TheEnd(options); //It's rather easy when you've got a class!!
         this.add(the_end, "interactables");
         this.the_ends.push(the_end); //Allows our Noms to update the ends when they are collected
-}
+};
 SuperMega.Level.prototype.add_terrain = function(options){
         /**
          * Creates a plane to act as terrain
@@ -1008,7 +1037,7 @@ SuperMega.Level.prototype.add_terrain = function(options){
          * @return: <Plane Mesh> The terrain
          */
         //Handle presets
-        if(options.preset!=null){
+        if(options.preset !== null){
             //Means replace our objects with the present values
             var preset = SuperMega.OBJECT_PRESETS[options.preset] || null;
             if(preset){ //Update our options with values from the preset --- Should we do it the other way round??
@@ -1021,7 +1050,7 @@ SuperMega.Level.prototype.add_terrain = function(options){
         //Deal with the slight name variances between the node.js server and this function
         var data = options.height_data; //This is mandatory!
         if(!data){
-            console.log("ERROR: SuperMega.Level.add_terrain - you must supply an array of vertex heights in order to generate a terrain!!")
+            console.log("ERROR: SuperMega.Level.add_terrain - you must supply an array of vertex heights in order to generate a terrain!!");
             return false;
         }
         
@@ -1029,7 +1058,7 @@ SuperMega.Level.prototype.add_terrain = function(options){
         options.depth = options.depth || options.worldDepth || this.world_depth;
         options.width_vertices = options.width_vertices || Math.round(options.width)*2; //Defaults to twice world width
         options.depth_vertices = options.depth_vertices || Math.round(options.depth)*2; //Defaults to twice world width
-        options.multiplier = options.multipler || .25; //Defaults to gently undulating green ground
+        options.multiplier = options.multipler || 0.25; //Defaults to gently undulating green ground
         options.subtractor = options.subtractor || 6; //Defaults to rather central average height (just like ground)
         options.liquid = options.liquid || false; //Normally not a liquid
         
@@ -1041,8 +1070,8 @@ SuperMega.Level.prototype.add_terrain = function(options){
                             color: options.colour || options.color || 0x557733,
                             shading: THREE.FlatShading
                         }),
-                    .8, // high friction
-                    .4 // low restitution
+                    0.8, // high friction
+                    0.4 // low restitution
                 );
             } else { //Is a liquid - Create something which looks like water (and has no PhysiJS power)
                 options.material = new THREE.MeshPhongMaterial({
@@ -1067,7 +1096,7 @@ SuperMega.Level.prototype.add_terrain = function(options){
         var terrainGeometry = new THREE.Plane3RandGeometry( options.width_vertices, options.depth_vertices, options.width - 1, options.depth - 1 );
 
         // Apply the height map data, multiplier and subtractor to the plane vertices
-        for ( var i = 0, l = terrainGeometry.vertices.length; i < l; i ++ ) {
+        for ( i = 0, l = terrainGeometry.vertices.length; i < l; i ++ ) {
             terrainGeometry.vertices[ i ].z = floatData[ i ] * options.multiplier - options.subtractor;
         }
 
@@ -1104,7 +1133,7 @@ SuperMega.Level.prototype.add_terrain = function(options){
         // Return the terrain mesh
         return t;
         
-}
+};
 
 
 
@@ -1159,7 +1188,7 @@ SuperMega.Player = function (options, scene, hud){
     //Initialise a fresh life:
     this.reset(scene, hud);
     
-}
+};
 SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.prototype), {
     constructor: SuperMega.Player,
     
@@ -1217,7 +1246,7 @@ SuperMega.Player.prototype.on_collision = function(callback){
     this.addEventListener( 'collision', function( other_object, relative_velocity, relative_rotation, contact_normal ) {
         console.log("Hit something: "+other_object.uuid);
     });
-}
+};
 SuperMega.Player.prototype.build_rays = function(){
         /**
          * Creates the collision detection rays
@@ -1336,20 +1365,20 @@ SuperMega.Player.prototype.build_rays = function(){
         //Declare our new ray points
         this.new_rays = {
             "x" : {
-                "top" : [new THREE.Vector3(0,.5,1), new THREE.Vector3(0,-.5,1)],
+                "top" : [new THREE.Vector3(0,0.5,1), new THREE.Vector3(0,-0.5,1)],
                 "centre" : [new THREE.Vector3(0,0,0)],
-                "stepup" : [new THREE.Vector3(0,.5,(-1*(this.STEPUP_AMOUNT))), new THREE.Vector3(0,-.5,(-1*(this.STEPUP_AMOUNT)))],
-                "bottom" : [new THREE.Vector3(0,.5,-1), new THREE.Vector3(0,-.5,-1)]
+                "stepup" : [new THREE.Vector3(0,0.5,(-1*(this.STEPUP_AMOUNT))), new THREE.Vector3(0,-0.5,(-1*(this.STEPUP_AMOUNT)))],
+                "bottom" : [new THREE.Vector3(0,0.5,-1), new THREE.Vector3(0,-0.5,-1)]
             }, //The direction is given by THREE.Vector3(to_move_x,0,0).normalize()
             "y" : {
-                "top" : [new THREE.Vector3(.5,0,1), new THREE.Vector3(-.5,0,1)],
+                "top" : [new THREE.Vector3(0.5,0,1), new THREE.Vector3(-0.5,0,1)],
                 "centre" : [new THREE.Vector3(0,0,0)],
-                "stepup" : [new THREE.Vector3(.5,0,(-1*(this.STEPUP_AMOUNT))), new THREE.Vector3(-.5,0,(-1*(this.STEPUP_AMOUNT)))],
-                "bottom" : [new THREE.Vector3(.5,0,-1), new THREE.Vector3(-.5,0,-1)]
+                "stepup" : [new THREE.Vector3(0.5,0,(-1*(this.STEPUP_AMOUNT))), new THREE.Vector3(-0.5,0,(-1*(this.STEPUP_AMOUNT)))],
+                "bottom" : [new THREE.Vector3(0.5,0,-1), new THREE.Vector3(-0.5,0,-1)]
             }, //The direction is given by THREE.Vector3(0,to_move_y,0).normalize()
             "z" : {
                 //           0=Leftback                       1=Leftfront               2=rightback                 3=rightfront
-                "axial" : [new THREE.Vector3(.5,.5,0),new THREE.Vector3(.5,-.5,0),new THREE.Vector3(-.5,.5,0),new THREE.Vector3(-.5,-.5,0)],
+                "axial" : [new THREE.Vector3(0.5,0.5,0),new THREE.Vector3(0.5,-0.5,0),new THREE.Vector3(-0.5,0.5,0),new THREE.Vector3(-0.5,-0.5,0)],
             } //The direction is given by THREE.Vector3(0,0,to_move_z).normalize()
         };
         this.new_rays["x_minus"] = this.new_rays["x"]; //Uses same ray points
@@ -1371,13 +1400,12 @@ SuperMega.Player.prototype.build_rays = function(){
             "y_minus" : 0.5,
             "z_minus" : 1
         };
-}
+};
 SuperMega.Player.prototype.drawRay = function(level, id, origin, direction, distance) {
     var pointA = origin;
-    var direction = direction;
     direction.normalize();
 
-    var distance = distance || 10; // at what distance to determine pointB
+    distance = distance || 10; // at what distance to determine pointB
 
     var pointB = new THREE.Vector3();
     pointB.addVectors ( pointA, direction.multiplyScalar( distance ) );
@@ -1396,7 +1424,7 @@ SuperMega.Player.prototype.drawRay = function(level, id, origin, direction, dist
         ray.geometry.vertices[1] = pointB;
         ray.geometry.verticesNeedUpdate = true;
     }
-}
+};
    
 SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move, axis, target_objects, input, is_terrain){
     /**
@@ -1504,7 +1532,7 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
             if(group_name=="top" || group_name=="centre"){ //Bin top and central rays
                 return true; //This is a continue
             }
-            var ray_length_multiplier = 1; //Optimisation, use only short rays
+            ray_length_multiplier = 1; //Optimisation, use only short rays
         }
         //Set up loop vars:
         output.collisions[group_name] = output.collisions[group_name] || []; //Permits concatenation from earlier runs
@@ -1522,10 +1550,11 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
             thisplayer.caster.set(global_point, global_direction.clone().normalize()); //Set a ray with appropriate direction ??WHAT ABOUT SIZE of Ray??
             
             //Check for collisions
+            var collision_results = null;
             if(!is_terrain){ //Objects are not terrain. The most efficient algorithm will be intersectObjects
-                var collision_results = thisplayer.caster.intersectObjects(target_objects); //See what the outgoing rays hit
+                collision_results = thisplayer.caster.intersectObjects(target_objects); //See what the outgoing rays hit
             } else { //Objects ARE terrain. The most efficient algorithm will be intersectPlane();
-                var collision_results = thisplayer.caster.intersectObjects(target_objects); //TODO: improve efficiency
+                collision_results = thisplayer.caster.intersectObjects(target_objects); //TODO: improve efficiency
                 if(DEBUG || true){ 
                     thisplayer.drawRay(level, String(axis)+String(group_name)+ray_index, global_point, global_direction.clone().normalize(), thisplayer.caster.far);
                 }
@@ -1535,7 +1564,6 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
             if ( collision_results.length > 0 ) { //Means this ray collided
                 $.each(collision_results, function(index, collision){ //Iterate through all the collisions, deliberately ignore the player
                     if(collision.object.geometry.uuid == thisplayer.geometry.uuid){ //Skip this own player object!!
-                        console.log("PLAYER!");
                         return true; //This acts as a $.each loop continue;
                     }
                     //Calculate collision distance
@@ -1594,7 +1622,7 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                 if(!isNaN(z_move)){
                     output.z_move = z_move; //Why is this happening?? double X translation??
                 }else{
-                    console.log("NaN!! "+slope_vertical+"/"+slope_horizontal+"");
+                    //D("NaN!! "+slope_vertical+"/"+slope_horizontal+"");
                     output.z_move = thisplayer.STEPUP_AMOUNT;
                 }
                 //TODO: Check knock-on head-hitting here.
@@ -1768,6 +1796,20 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
         obj.touched(delta,player,level);
         
     });
+    
+    
+    //Collect any collectables you are touching:
+    var hit_collectables = this.detectCollision(level.interactables);
+    if(hit_collectables && level.loaded && player.ready){
+        console.log("Hit pickup!!")
+        var already_hit = [];
+        $.each(hit_collectables.other_objects, function(){
+            if(already_hit.indexOf(this)==-1){ //Prevent double-collision issues
+                this.collect(delta, player, level); //Collect this object!
+                already_hit.push(this);
+            }
+        });
+    }
     
     //Velocity decay
     //Horizontal velocity decay: //TODO: viscous fluids - e.g. drags through water
@@ -2662,9 +2704,15 @@ SuperMega.Player.prototype.power_up = function(increment){
         }
         return outcome;
 }
-SuperMega.Player.prototype.respawn = function(){
+SuperMega.Player.prototype.respawn = function(level){
         this.heal(100);
         this.reset();
+        //And place the player back at the starting point:
+        if(level){
+        	console.log(level);
+        	this.position.set(level.start_position.x, level.start_position.y, level.start_position.z);
+        	this.rotation.setFromVector3(level.start_orientation);
+        }
 }
 SuperMega.Player.prototype.injure = function(damage){
         /**
@@ -3316,7 +3364,7 @@ SuperMega.Nom.prototype = Object.assign( Object.create(SuperMega.Interactable.pr
  */
 SuperMega.TheEnd = function(options){
     options = options || {};
-    this.nom_threshold = options.nom_threshold || 5; //Default 5 noms
+    this.nom_threshold = options.noms_required || options.nom_threshold || 5; //Default 5 noms
     
     //Build the shape
     var trapezium_geo = new THREE.CubeGeometry(6, 3, 3); //A flat large thing on its side
@@ -3385,7 +3433,8 @@ SuperMega.TheEnd.prototype = Object.assign( Object.create(SuperMega.Interactable
         //Call the end if done
         if(player.noms >= this.nom_threshold){ //Means it's active 
             //TODO: Level End routine
-            console.log("LEVEL FINISHED!!");
+            console.log("LEVEL FINISHED!! W00T!!");
+            level.completed(player); //Run the level complete sequence
         }
     },
     collect : function(delta, player, level){return this.touched(delta,player,level);},
@@ -3406,7 +3455,7 @@ SuperMega.TheEnd.prototype = Object.assign( Object.create(SuperMega.Interactable
             this.state = false; //Inactive
             this.material.opacity = 0.4;
             this.material.wireframe = true;
-            console.log("End still inactive");
+            D("End still inactive");
         }
         var the_end_container = this; //Allows us to grab this in our loop of daughter meshes.
         $.each(this.contains, function(index, obj){ //Iterate the daughter meshes (cylinder)
@@ -3414,7 +3463,7 @@ SuperMega.TheEnd.prototype = Object.assign( Object.create(SuperMega.Interactable
             obj.material.wireframe = the_end_container.material.wireframe;
             obj.material.needsUpdate;
         });
-        console.log("Player noms: "+player.noms+"/"+this.nom_threshold);
+        D("Player noms: "+player.noms+"/"+this.nom_threshold);
         
         this.material.needsUpdate = true; //Ensures the object is re-rendered
     },

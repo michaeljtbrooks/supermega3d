@@ -80,6 +80,9 @@ var level_contents = {
                 {"position":[-10,56.5,42]}, //Nom on upper platform sideways mover #1 
                 {"position":[-20,36.5,42]} //Nom on upper platform sideways  mover #2
             ],
+            "powerups" : [
+                {"position":[-9.0,15.5,6.0]} //Can only get this by standing on pillar! 
+            ],
             "ends" : [
                 {"position":[-68,46.5,42], "orientation":[0,0,DEG90], "noms_required":2}, //The end  
             ],
@@ -884,12 +887,12 @@ function connect(nickname) {
 function createScene(data) {
     
     console.log(data);
-    var start_position = new THREE.Vector3(0,0,0);
+    var start_position = new THREE.Vector3(0,0,10);
     var start_orientation = new THREE.Euler(0,0,0);
     if(!sandbox){ //We wish to load a level from data
         level.build(level_contents[0]); //Load level 1
-        start_position = level_contents[0].start_position || start_position;
-        start_orientation = level_contents[0].start_orientation || start_orientation;
+        start_position = level.start_position || level_contents[0].start_position || start_position;
+        start_orientation = level.start_orientation || level_contents[0].start_orientation || start_orientation;
     }else{
         /**
          * Build our sandbox level
@@ -1181,7 +1184,6 @@ function createScene(data) {
     
     player = new SuperMega.Player({player_id : data.player.player_id, nickname : nickname}, scene, hud);
     var LOCAL_PLAYER = player; //Just so it's easy to find!
-    
 
     //
     // CAMERA RIG
@@ -1421,9 +1423,9 @@ function animate(delta) {
         }
         
         if(isKeyDown(KEYCODE['0'])){ //Test if position moves player
-            player.position.x = 0;
-            player.position.y = 0;
-            player.position.z = 60;
+            var start_pos = level.start_position || new THREE.Vector3(0,0,60);
+        	player.position.set(start_pos.x, start_pos.y, start_pos.z);
+        	player.rotation.setFromVector3(level.start_orientation || new THREE.Euler(0,0,0));
             player.standing_on_velocity = new THREE.Vector3(0,0,0);
         }
         if(isKeyDown(KEYCODE['9'])){ //Boost up
@@ -1463,7 +1465,7 @@ function animate(delta) {
                 waitRequired(KEYCODE.ENTER);
 
                 // Tell the server the player wants to respawn
-                player.respawn();
+                player.respawn(level);
                 socket.emit('respawn');
 
                 // Remove the dead overlay
