@@ -43,16 +43,16 @@ The 3D platformer that doesn't care how it looks, just how it plays.
 
 ## To do:
 DONE) Add transfer of platform momentum you are standing on to you
-2) Static and moving traps
-3) Power-up objects
+DONE) Static and moving traps
+DONE) Power-up objects
 4) Enemies with some degree of AI
 5) Switch-operated doors
-6) Level loader (the first Super Mega worked really well because I could bang out levels in minutes by using Paint. The 
+DONE) Level loader (the first Super Mega worked really well because I could bang out levels in minutes by using Paint. The 
 code would load the bitmaps then interpret items based on pixel colour. I'd love to have the same sort of arrangement
 where  we construct levels quickly in Blender then load them in.)
-7) Create a metric shit-tonne of levels! :-D
-8) Refactor the code so we use proper classes rather than monkey-patching :-S
-9) Performance optimisation, client-side.
+WIP) Create a metric shit-tonne of levels! :-D
+DONE) Refactor the code so we use proper classes rather than monkey-patching :-S
+WIP) Performance optimisation, client-side.
 10) Server optimisation, security and cheat resiliance.
 11) Fix all the multiplayer stuff I'll have no doubt broken along the way.
 

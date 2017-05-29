@@ -121,44 +121,197 @@ var level_contents = {
             "start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
         },
         
-        3:{ //Level 3 = Tubular Hell
-            "platforms" : [
-                {"size":[10,10,2], "position":[0,0,1]}, //Flat start
-                {"size":[10,100,2], "position":[0,55,1], "preset":"ice_platform"}, //Long central ice platform
-                {"size":[7,7,2], "position":[-15,20,1]}, //Flanker L1
-                {"size":[7,7,2], "position":[-15,60,1]}, //Flanker L2
-                {"size":[7,7,2], "position":[-15,100,1]}, //Flanker L3
-                {"size":[7,7,2], "position":[15,40,1]}, //Flanker R1
-                {"size":[7,7,2], "position":[15,80,1]}, //Flanker R2
-                {"size":[10,10,2], "position":[0,129,1]}, //Flat start
-            ],
-            "traps" : [
-                {"size":[4,4,10], "position":[0,40,7], "orientation":[0,0,0], "translation":[Math.PI/3,Math.PI/3,0], "translation_mode":"orbiting", "magnitude":20}, //Moving pillar 1
-                {"size":[4,4,10], "position":[0,80,7], "orientation":[0,0,0], "translation":[-Math.PI/3,-Math.PI/3,0], "translation_mode":"orbiting", "magnitude":20} //Moving pillar 2
-            ],
-            "noms" : [
-                {"position":[15,40,4]}, // On flanker R1
-                {"position":[15,80,4]}, // On flanker R2
-                {"position":[-15,60,4]}, // On flanker L2
-            ],
-            "powerups" : [
-                {"position":[-15,20,4]}, // On flanker L1
-                {"position":[-15,100,4]} // On flanker L2
-            ],
-            "ends" : [
-                {"position":[0,130,3.5], "orientation":[0,0,0], "noms_required":3}, //The end  
-            ],
-            "start_position": new THREE.Vector3(0,0,6), //Where player starts
-            "start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
-        }
 };
+
+//Level 3 = Tubular hell
+/*
+ * This is a cracking level. There are four vertical tubes going down to a variable fate
+ * (one of two noms, the level end, or a trap). The order of them varies between runs
+ * Once down the bottom, you have to work your way back up to the top to try another tube.
+ * 
+ */
+var tubular_hell = {
+   "platforms" : [
+       {"size":[10,10,2], "position":[0,0,109]}, //Flat start
+       {"size":[4,50,2], "position":[-6,25,109]}, //Left side strip
+       {"size":[4,50,2], "position":[6,25,109]}, //Right side strip
+       //Tube 1
+       {"size":[2,10,80], "position":[-4,10,70]}, //1L
+       {"size":[2,10,80], "position":[4,10,70]}, //1R
+       {"size":[10,2,80], "position":[0,6,70]}, //1B
+       {"size":[10,4,80], "position":[0,15,70]}, //1F
+       //Tube 2
+       {"size":[2,10,80], "position":[-4,20,70]}, //2L
+       {"size":[2,10,80], "position":[4,20,70]}, //2R
+       {"size":[10,4,80], "position":[0,25,70]}, //2F
+       //Tube 3
+       {"size":[2,10,80], "position":[-4,30,70]}, //3L
+       {"size":[2,10,80], "position":[4,30,70]}, //3R
+       {"size":[10,4,80], "position":[0,35,70]}, //3F
+       //Tube 4
+       {"size":[2,10,80], "position":[-4,40,70]}, //4L
+       {"size":[2,10,80], "position":[4,40,70]}, //4R
+       {"size":[10,4,80], "position":[0,45,70]}, //4F
+       //End platform taking you off to the viewpoint
+       {"size":[10,20,2], "position":[0,55,109]}, //Flat top end
+       {"size":[10,10,2], "position":[0,80,109], "translation":[15,0,0], "translation_mode":"reciprocating", "magnitude":60, "colour": 0xAA8833}, //Transporter at top end carrying you to the loop da loop lifts
+       {"size":[10,40,2], "position":[55,45,109]}, //Boarding strip for the big circular lift
+       {"size":[20,10,2], "position":[50,38,59], "translation":[0,0.8,0.8], "translation_mode":"orbiting", "magnitude":48, "colour": 0xAA8833}, //Transporter at top end carrying you to the loop da loop lifts
+       
+       //Underparts
+       {"size":[40,40,2], "position":[-25,25,20]}, //Tube collector plane
+       {"size":[60,2,20], "position":[-25,15,30]}, //Separates 1 from 2
+       {"size":[60,2,20], "position":[-25,25,30]}, //Separates 2 from 3
+       {"size":[60,2,20], "position":[-25,35,30]}, //Separates 3 from 4
+       {"size":[2,40,20], "position":[-6,25, 10]}, //Curtain to hide tube ends from collector system
+       {"size":[20,50,2], "position":[-55,25,0]}, //Underparts collector
+       {"size":[8,8,2], "position":[-50,-5,-4], "orientation":[0,0,0], "translation":[0,0,15], "translation_mode":"reciprocating", "magnitude":150, "colour": 0xAA8833}, //Underparts lift #1
+       {"size":[8,8,2], "position":[-60,-5,140], "orientation":[0,0,0], "translation":[0,0,-15], "translation_mode":"reciprocating", "magnitude":150, "colour": 0xAA8833}, //Underparts lift #2
+       
+       //Lift exit Returner strip to start
+       {"size":[40,6,2], "position":[-25,-5,130], "orientation":[0,0,0]}, //Roof strip
+       {"size":[2,10,2], "position":[-4,0,130]}, //TL
+       {"size":[2,10,2], "position":[4,0,130]}, //TR
+       {"size":[10,5,2], "position":[0,-6,130]}, //TB - fatter
+       {"size":[10,2,2], "position":[0,4,130]} //TF
+       
+   ],
+   "traps" : [
+       {"size":[40,50,2], "position":[-25,25,40]}, //protects tube collector
+   ],
+   "noms" : [
+       {"position":[0,0,132]}, //At the fall back down to start
+       {"position":[0,58,112]} //Right at the very end of the level
+   ],
+   "powerups" : [
+   ],
+   "ends" : [ //Defined by the random config
+   ],
+   "start_position": new THREE.Vector3(0,0,115), //Where player starts
+   "start_orientation" : new THREE.Euler(0,0,Math.PI), //Turn around!!
+   "fog" : { "color" : 0xFFFFFF, "density" : 0.025}, //Thick ExpFog
+   "background" : { "color" : 0xFFFFFF} //White clouds
+};
+var tubular_hell_mode = Math.floor(Math.random()*6); //There are 4 configurations of the variable platforms 
+var tubular_variable_configs = [ //A different config for each possible mode!
+    { //Mode 0: nom, nom, trap, end
+        "platforms":[
+             {"size":[6,6,2], "position":[0,10,20]},
+             {"size":[6,6,2], "position":[0,20,20]},
+             {"size":[6,6,2], "position":[0,40,20]},
+        ],
+        "traps":[
+             {"size":[6,6,2], "position":[0,30,20]},
+        ],
+        "noms":[
+             {"position":[0,10,23]},
+             {"position":[0,20,23]},
+        ],
+        "ends":[
+             {"position":[0,40,23], "noms_required":4},
+        ],
+    },
+    { //Mode 1: trap, nom, end, nom
+        "platforms":[
+             {"size":[6,6,2], "position":[0,20,20]},
+             {"size":[6,6,2], "position":[0,30,20]},
+             {"size":[6,6,2], "position":[0,40,20]},
+        ],
+        "traps":[
+             {"size":[6,6,2], "position":[0,10,20]},
+        ],
+        "noms":[
+             {"position":[0,20,23]},
+             {"position":[0,40,23]},
+        ],
+        "ends":[
+             {"position":[0,30,23], "noms_required":4},
+        ],
+    },
+    { //Mode 2: end (without platform!!), nom, nom, trap
+        "platforms":[
+             //{"size":[6,6,2], "position":[0,20,20]}, //End has NO PLATFORM (i.e. hit it when active or die!
+             {"size":[6,6,2], "position":[0,20,20]},
+             {"size":[6,6,2], "position":[0,30,20]},
+        ],
+        "traps":[
+             {"size":[6,6,2], "position":[0,40,20]},
+        ],
+        "noms":[
+             {"position":[0,20,23]},
+             {"position":[0,30,23]},
+        ],
+        "ends":[
+             {"position":[0,10,23], "noms_required":4, "orientation":[0,0,DEG45]},
+        ],
+    },
+    { //Mode 3: nom, trap, nom, end
+        "platforms":[
+             {"size":[6,6,2], "position":[0,10,20]}, //End has NO PLATFORM (i.e. hit it when active or die!
+             {"size":[6,6,2], "position":[0,30,20]},
+             {"size":[6,6,2], "position":[0,40,20]},
+        ],
+        "traps":[
+             {"size":[6,6,2], "position":[0,20,20]},
+        ],
+        "noms":[
+             {"position":[0,10,23]},
+             {"position":[0,30,23]},
+        ],
+        "ends":[
+             {"position":[0,40,23], "noms_required":4},
+        ],
+    },
+    { //Mode 4: nom, trap, nom, end (without platform!)
+        "platforms":[
+             {"size":[6,6,2], "position":[0,10,20]}, 
+             {"size":[6,6,2], "position":[0,30,20]},
+             //{"size":[6,6,2], "position":[0,40,20]}, //No platform under end!
+        ],
+        "traps":[
+             {"size":[6,6,2], "position":[0,20,20]},
+        ],
+        "noms":[
+             {"position":[0,10,23]},
+             {"position":[0,30,23]},
+        ],
+        "ends":[
+             {"position":[0,40,23], "noms_required":4, "orientation":[0,0,DEG45]},
+        ],
+    },
+    { //Mode 5: end (without platform)+nom, nom, trap, trap
+        "platforms":[
+             {"size":[6,6,2], "position":[0,20,20]}, 
+             //{"size":[6,6,2], "position":[0,30,20]},
+             //{"size":[6,6,2], "position":[0,40,20]}, //No platform under end!
+        ],
+        "traps":[
+             {"size":[6,6,2], "position":[0,30,20]},
+             {"size":[6,6,2], "position":[0,40,20]},
+        ],
+        "noms":[
+             {"position":[0,10,28]},
+             {"position":[0,20,23]},
+        ],
+        "ends":[
+             {"position":[0,10,23], "noms_required":4, "orientation":[0,0,DEG45]},
+        ],
+    },
+]
+//Merge in level 3s randomised item positions
+$.merge(tubular_hell.platforms, tubular_variable_configs[tubular_hell_mode].platforms); //Add in platforms
+$.merge(tubular_hell.traps, tubular_variable_configs[tubular_hell_mode].traps); //Add in traps
+$.merge(tubular_hell.noms, tubular_variable_configs[tubular_hell_mode].noms); //Add in ends
+$.merge(tubular_hell.ends, tubular_variable_configs[tubular_hell_mode].ends); //Add in ends
+level_contents[3] = tubular_hell;
+
 
 
 
 var DEBUG = true; //Debug mode
 var level; //Where we'll store our level
-var level_number = 3; //What level to start on (overridden by Sandbox)
-var sandbox = false; //Whether to build our debug environment
+var level_number = 2; //What level to start on (overridden by Sandbox if on)
+var sandbox = false; //Whether to build our debug environment instead of levels
 
     // screen size
 var SCREEN_WIDTH = window.innerWidth,
@@ -518,7 +671,6 @@ function init() {
     level = new SuperMega.Level(scene, 1, {"world_width":worldWidth, "world_depth":worldDepth}); //Scene now held in level too
     scene.loaded = false;
     level.loaded = false; //Holds off events and collision detection until loaded
-    level.scene.fog = new THREE.Fog( 0xffffff, 1000, FAR );   // Fog is irrelevant
 
     // Physics - set gravity and update listener
     level.scene.setGravity(new THREE.Vector3( 0, 0, -30 ));

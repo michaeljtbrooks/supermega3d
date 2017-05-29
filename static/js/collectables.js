@@ -279,6 +279,9 @@ SuperMega.Level = function( scene, level_number, options){
     scene.loaded = false;
     this.scene = scene;
     
+    //Default to no fog:
+    this.scene.fog = new THREE.Fog( 0xFFFFFF, 1000, 2000);
+    
     //Create clock
     this.clock = new THREE.Clock(); //Clock to watch our frames
     
@@ -635,6 +638,24 @@ SuperMega.Level.prototype.build = function(data){
             var item = SuperMega.Interactable(options);
             self.add(item, "debris");
         });
+        
+        
+        //Apply fog to the scene:
+        if(data.fog){
+            if(data.fog.density){ //Use exponential fog
+                this.scene.fog = new THREE.FogExp2(data.fog.color || data.fog.colour || 0xFFFFFF, data.fog.density);
+            }else{ //Use flat fog
+                this.scene.fog = new THREE.Fog( data.fog.color || data.fog.colour || 0xFFFFFF, data.fog.near || 1000, data.fog.far || 2000);
+            }
+            if(this.background_scene){ //Apply the fog to the BG too
+                this.background_scene.fog = this.scene.fog;
+            }
+        }
+        
+        //Apply any background colours:
+        if(data.background){
+            self.create_background(data.background);
+        }
        
         //Recompile:
         this.recompile_obstacles();
@@ -1107,7 +1128,10 @@ SuperMega.Level.prototype.add_terrain = function(options){
         }
         
         //Deal with the slight name variances between the node.js server and this function
-        var data = options.height_data; //This is mandatory!
+        var data = options.height_data || null; //This is mandatory!
+        if(!data){ //Generate some random heightmatrix data
+            
+        }
         if(!data){
             console.log("ERROR: SuperMega.Level.add_terrain - you must supply an array of vertex heights in order to generate a terrain!!");
             return false;
@@ -3145,10 +3169,15 @@ SuperMega.Interactable.prototype.animate = function(delta){
         this.amount_moved.x = (this.amount_moved.x + tx) % (2*Math.PI); //Wrap around  
         this.amount_moved.y = (this.amount_moved.y + ty) % (2*Math.PI);
         this.amount_moved.z = (this.amount_moved.z + tz) % (2*Math.PI);
+        
         this.position.x = this.ops.magnitude * Math.sin(this.amount_moved.x+0) + this.origin.x; //0 degrees
         this.position.y = this.ops.magnitude * Math.sin(this.amount_moved.y+Math.PI/2) + this.origin.y; //90 degree out of phase
         //This needs fixing... how do we do an inclined plane?
-        this.position.z = this.ops.magnitude * Math.sin(this.amount_moved.z) + this.origin.z; //90 degree out of phase too
+        var phase_offset_z = 0;
+        if(this.ops.translation.x!=0 && this.ops.translation.z!=0){ //We put Z 90 degrees out of phase with x for a vertical circular
+            phase_offset_z = Math.PI/2;
+        }    
+        this.position.z = this.ops.magnitude * Math.sin(this.amount_moved.z+phase_offset_z) + this.origin.z; //90 degree out of phase too
     }
     //Calculate velocity:
     this.velocity.x = (this.position.x - pos_before.x)/delta;
