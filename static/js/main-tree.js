@@ -61,7 +61,7 @@ var DEG60 = Math.PI/3;
 var DEG90 = Math.PI/2;
 
 var level_contents = {
-        0:{ //Our first level
+        1:{ //Our first level
             "platforms" : [
                 {"size":[10,30,2], "position":[0,10,-5]}, //Flat start
                 {"size":[10,20,2], "position":[0,33,-0.5], "orientation":[DEG30,0,0]}, //Ramp up
@@ -88,6 +88,68 @@ var level_contents = {
             ],
             "start_position": new THREE.Vector3(0,0,2), //Where player starts
             "start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
+        },
+        
+        2:{ //Level 2 = ice bridge
+            "platforms" : [
+                {"size":[10,10,2], "position":[0,0,1]}, //Flat start
+                {"size":[10,100,2], "position":[0,55,1], "preset":"ice_platform"}, //Long central ice platform
+                {"size":[7,7,2], "position":[-15,20,1]}, //Flanker L1
+                {"size":[7,7,2], "position":[-15,60,1]}, //Flanker L2
+                {"size":[7,7,2], "position":[-15,100,1]}, //Flanker L3
+                {"size":[7,7,2], "position":[15,40,1]}, //Flanker R1
+                {"size":[7,7,2], "position":[15,80,1]}, //Flanker R2
+                {"size":[10,10,2], "position":[0,129,1]}, //Flat start
+            ],
+            "traps" : [
+                {"size":[4,4,10], "position":[0,40,7], "orientation":[0,0,0], "translation":[Math.PI/3,Math.PI/3,0], "translation_mode":"orbiting", "magnitude":20}, //Moving pillar 1
+                {"size":[4,4,10], "position":[0,80,7], "orientation":[0,0,0], "translation":[-Math.PI/3,-Math.PI/3,0], "translation_mode":"orbiting", "magnitude":20} //Moving pillar 2
+            ],
+            "noms" : [
+                {"position":[15,40,4]}, // On flanker R1
+                {"position":[15,80,4]}, // On flanker R2
+                {"position":[-15,60,4]}, // On flanker L2
+            ],
+            "powerups" : [
+                {"position":[-15,20,4]}, // On flanker L1
+                {"position":[-15,100,4]} // On flanker L2
+            ],
+            "ends" : [
+                {"position":[0,130,3.5], "orientation":[0,0,0], "noms_required":3}, //The end  
+            ],
+            "start_position": new THREE.Vector3(0,0,6), //Where player starts
+            "start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
+        },
+        
+        3:{ //Level 3 = Tubular Hell
+            "platforms" : [
+                {"size":[10,10,2], "position":[0,0,1]}, //Flat start
+                {"size":[10,100,2], "position":[0,55,1], "preset":"ice_platform"}, //Long central ice platform
+                {"size":[7,7,2], "position":[-15,20,1]}, //Flanker L1
+                {"size":[7,7,2], "position":[-15,60,1]}, //Flanker L2
+                {"size":[7,7,2], "position":[-15,100,1]}, //Flanker L3
+                {"size":[7,7,2], "position":[15,40,1]}, //Flanker R1
+                {"size":[7,7,2], "position":[15,80,1]}, //Flanker R2
+                {"size":[10,10,2], "position":[0,129,1]}, //Flat start
+            ],
+            "traps" : [
+                {"size":[4,4,10], "position":[0,40,7], "orientation":[0,0,0], "translation":[Math.PI/3,Math.PI/3,0], "translation_mode":"orbiting", "magnitude":20}, //Moving pillar 1
+                {"size":[4,4,10], "position":[0,80,7], "orientation":[0,0,0], "translation":[-Math.PI/3,-Math.PI/3,0], "translation_mode":"orbiting", "magnitude":20} //Moving pillar 2
+            ],
+            "noms" : [
+                {"position":[15,40,4]}, // On flanker R1
+                {"position":[15,80,4]}, // On flanker R2
+                {"position":[-15,60,4]}, // On flanker L2
+            ],
+            "powerups" : [
+                {"position":[-15,20,4]}, // On flanker L1
+                {"position":[-15,100,4]} // On flanker L2
+            ],
+            "ends" : [
+                {"position":[0,130,3.5], "orientation":[0,0,0], "noms_required":3}, //The end  
+            ],
+            "start_position": new THREE.Vector3(0,0,6), //Where player starts
+            "start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
         }
 };
 
@@ -95,6 +157,7 @@ var level_contents = {
 
 var DEBUG = true; //Debug mode
 var level; //Where we'll store our level
+var level_number = 3; //What level to start on (overridden by Sandbox)
 var sandbox = false; //Whether to build our debug environment
 
     // screen size
@@ -763,7 +826,9 @@ function connect(nickname) {
                 dropDeadBody(player);
                 player.visible = false;
                 player.sprite.visible = false;
-
+                
+                // Update victim player sprite (hp changes)
+                updatePlayerSprite(data.playerId);
             } else {
 
                 // A REMOTE PLAYER IS DEAD
@@ -886,14 +951,19 @@ function connect(nickname) {
  */
 function createScene(data) {
     
+    //Player gets created first (this doesn't make a difference to the 
+    player = new SuperMega.Player({player_id : data.player.player_id, nickname : nickname}, scene, hud);
+    var LOCAL_PLAYER = player; //Just so it's easy to find!
+    
     console.log(data);
     var start_position = new THREE.Vector3(0,0,10);
     var start_orientation = new THREE.Euler(0,0,0);
     if(!sandbox){ //We wish to load a level from data
-        level.build(level_contents[0]); //Load level 1
+        level.build(level_contents[level_number || 0]); //Load level
         start_position = level.start_position || level_contents[0].start_position || start_position;
         start_orientation = level.start_orientation || level_contents[0].start_orientation || start_orientation;
     }else{
+        //Sandbox! 
         /**
          * Build our sandbox level
          */
@@ -1174,16 +1244,17 @@ function createScene(data) {
         //Now resolve the starting position
         var x_start = data.player.start_pos.x;
         var y_start = data.player.start_pos.y;
-        var z_start = level.get_terrain_z(x_start, y_start, false); //Gets the position of the terrain at user's X & Y (false means no liquids)        
+        var z_start = level.get_terrain_z(x_start, y_start, false)+3; //Gets the position of the terrain at user's X & Y (false means no liquids)
+        start_position = new THREE.Vector3(x_start,y_start,z_start);
         
     }
     
     //
     // PLAYER
     //
-    
-    player = new SuperMega.Player({player_id : data.player.player_id, nickname : nickname}, scene, hud);
-    var LOCAL_PLAYER = player; //Just so it's easy to find!
+    //Player creation and addition to scene has been moved up to before other items created (will this cause Physijs collision to work??
+    //player = new SuperMega.Player({player_id : data.player.player_id, nickname : nickname}, scene, hud);
+    //var LOCAL_PLAYER = player; //Just so it's easy to find!
 
     //
     // CAMERA RIG
@@ -1345,6 +1416,13 @@ function animate(delta) {
         //mu = moveIfInBounds2(delta); //Improved collision detection. Detects if you have collided with something, if so undoes the movement you just did and resets the velocities to suit. Returns the friction coefficient of what you are standing on!
         mu = player.move_according_to_velocity2(delta, level); //Try out our new player object method...
     	
+        
+        //Fallen off the world? You're DEAD!!
+        if(player.position.z < -50){
+            // Show the dead screen
+            player.injure(1000);
+        }
+        
     	playerMoved = player.hasMoved; //Monkey patched property
         if(player.hasMoved){ //Quick detection to ensure we don't touch things until properly init
             player.ready = true;
@@ -1466,6 +1544,7 @@ function animate(delta) {
 
                 // Tell the server the player wants to respawn
                 player.respawn(level);
+                level.respawn(); //Rebuilds life-based collectables
                 socket.emit('respawn');
 
                 // Remove the dead overlay
@@ -1860,7 +1939,7 @@ function addPlayer(data) {
 
                 // Give the ball back to the player and update the hud
                 currentBallCount--;
-                player.hud.currentBallCount.text(maxBallCount - currentBallCount);
+                player.currentBallCount = (maxBallCount - currentBallCount);
 
                 // Update the remote player's sprite for the HP changes
                 updatePlayerSprite(player.player_id);
@@ -2004,8 +2083,9 @@ function createPlaneFromData(data, worldWidth, worldDepth, width, height, materi
     }
 
     // Provision a new three-dimensional plane with the given number of vertices
+    //var terrainGeometry = new THREE.Plane3RandGeometry( width, height, worldWidth - 1, worldDepth - 1 ); //Comes from Plane3Geometry.js
     var terrainGeometry = new THREE.Plane3RandGeometry( width, height, worldWidth - 1, worldDepth - 1 ); //Comes from Plane3Geometry.js
-
+    
     // Apply the height map data, multiplier and subtractor to the plane vertices
     for ( var i = 0, l = terrainGeometry.vertices.length; i < l; i ++ ) {
         terrainGeometry.vertices[ i ].z = floatData[ i ] * multiplier - subtractor;
@@ -3404,7 +3484,12 @@ function moveIfInBounds2(delta, specificPlayer){
  * @param targetPlayer - Player object to drop a body for
  */
 function dropDeadBody(targetPlayer) {
-
+    
+    //If the player already has a body, then bail
+    if(targetPlayer.body){
+        return targetPlayer.body;
+    }
+    
     // Clone the target player's material color
     var bodyMaterials = new THREE.MeshPhongMaterial( {
             color: targetPlayer.material.color,
@@ -3442,6 +3527,7 @@ function dropDeadBody(targetPlayer) {
     body.position.copy(targetPlayer.position);
 
     // Add the body to the world and let the hilarity commence
+    targetPlayer.body = body; //Ensures we only have one
     level.add( body, "debris" );
     
     return body;

@@ -48,8 +48,31 @@ THREE.Geometry.prototype.computeCentroids = function(mesh){
 
 
 THREE.Plane3RandGeometry = function ( width, height, widthSegments, heightSegments ) {
+    /*
+     * Plane 3RandGeometry
+     * 
+     * Generates a randomised heightmap
+     * 
+     * @param width: the heightmap width
+     * @param height: the heightmap depth
+     * @param widthSegments: the number of segments along the width (n vertices - 1)
+     * @param heightSegments: the number of segments along the depth (n vertices - 1)
+     */
 
     THREE.Geometry.call( this );
+    
+    //Hold the creation settings in a var as we'll need these to fast-search vertices
+    this.creation_settings = {
+            "width" : width,
+            "height" : height,
+            "depth" : height, //Alias
+            "widthSegments" : widthSegments,
+            "heightSegments" : heightSegments,
+            "width_segments" : widthSegments,
+            "height_segments" : heightSegments,
+            "x_spacing" : width/widthSegments,
+            "y_spacing" : height/heightSegments,
+    };
 
     var ix, iz,
         width_half = width / 2,
@@ -69,8 +92,7 @@ THREE.Plane3RandGeometry = function ( width, height, widthSegments, heightSegmen
             var x = ix * segment_width - width_half;
             var y = iz * segment_height - height_half;
 
-            this.vertices.push( new THREE.Vector3( x, - y, 0 ) );
-
+            this.vertices.push( new THREE.Vector3( x, - y, 0 ) ); //Why minus y? 
         }
 
     }
@@ -133,12 +155,82 @@ THREE.Plane3RandGeometry = function ( width, height, widthSegments, heightSegmen
         }
 
     }
-
+    
+    //Ensure we generate the centroids
     this.computeCentroids();
+    
 
 };
-
 THREE.Plane3RandGeometry.prototype = Object.create( THREE.Geometry.prototype );
+THREE.Plane3RandGeometry.prototype.get_z = function(x,y){
+    /**
+     * @name get_z
+     * @function Returns the height of the heightmap at the specified coordinates using bilinear interpolation
+     *           allows us to more efficiently detect terrain collisions
+     * 
+     * @param x: <float> The map's x coordinate
+     * @param y: <float> The map's y coordinate (depth)
+     * 
+     * @return <float> the z coordinate if the terrain is here, or <null> if it is not 
+     */
+   
+    //Quick escape if we're off the limits of the field:
+    if(isNaN(x) || isNaN(y)){
+        return null;
+    }
+    if(x < this.boundingBox.min.x || x > this.boundingBox.max.x || y < this.boundingBox.min.y || y > this.boundingBox.max.y){
+        return null; //We're off the bounds of the map
+    }
+    
+    //y = -1*y; //y axis is inverted!!
+    
+    //Resolve the nearest vertices to x,y (aim is to get the vertex index for the four nearest!)
+    var starting_vertex = this.vertices[0]; //Bottom left corner
+    var x_spacing = this.creation_settings.x_spacing; //Distance between vertices in X
+    var y_spacing = -this.creation_settings.y_spacing; //Distance between vertices in Y. NB y axis is INVERTED in the matrix for whatever reason, hence this is negative!
+    var x_pos_index = (x-starting_vertex.x)/x_spacing; //What our "index" would be in the array of x values
+    var y_pos_index = (y-starting_vertex.y)/y_spacing; //What our "index" would be in the array of y values, for some reason the y is built opposite!!
+    
+    //console.log("x,y vertex index: "+x_pos_index+","+y_pos_index+" ("+x+","+y+")");
+    
+    //Resolve what the "coordinates" would be if we were using a two-dimensional matrix to represent the vertices
+    var x_nearest_vertex_floor_coord = Math.floor(x_pos_index); //The Vertex index just below for x
+    var x_nearest_vertex_ceil_coord = Math.ceil(x_pos_index); //The Vertex index just above for x
+    var y_nearest_vertex_floor_coord = Math.floor(y_pos_index); //The Vertex index just below for y
+    var y_nearest_vertex_ceil_coord = Math.ceil(y_pos_index); //The Vertex index just above for y
+    
+    //Convert to actual vertex indexes as applied to our one dimensional array (x increases first, then y)
+    var y_nearest_vertex_floor_index = (this.creation_settings.width_segments + 1) * y_nearest_vertex_floor_coord;
+    var y_nearest_vertex_ceil_index = (this.creation_settings.width_segments + 1) * y_nearest_vertex_ceil_coord;
+    //console.log("y vertex index: "+y_nearest_vertex_floor_index+" to "+y_nearest_vertex_ceil_index);
+    var x1y1_index = y_nearest_vertex_floor_index + x_nearest_vertex_floor_coord;
+    var x2y1_index = y_nearest_vertex_floor_index + x_nearest_vertex_ceil_coord;
+    var x1y2_index = y_nearest_vertex_ceil_index + x_nearest_vertex_floor_coord;
+    var x2y2_index = y_nearest_vertex_ceil_index + x_nearest_vertex_ceil_coord;
+    
+    //console.log(x1y1_index+","+x2y1_index+","+x1y2_index+","+x2y2_index);
+    
+    //We now have the four vertex indices surrounding the point. Thanks to our quick get-out at the start, all these points WILL be on the matrix!
+    var x1y1 = this.vertices[x1y1_index];
+    var x2y1 = this.vertices[x2y1_index];
+    var x1y2 = this.vertices[x1y2_index];
+    var x2y2 = this.vertices[x2y2_index];
+    var x1 = x1y1.x; //Simplify to make our formula clear!
+    var x2 = x2y1.x;
+    var y1 = x1y1.y;
+    var y2 = x1y2.y;
+    
+    //Linear interpolate in the X direction
+    var z_at_xy1 = (x2-x)/(x2-x1)*x1y1.z + (x-x1)/(x2-x1)*x2y1.z;
+    var z_at_xy2 = (x2-x)/(x2-x1)*x1y2.z + (x-x1)/(x2-x1)*x2y2.z;
+    //Linear interpolate in the Y direction
+    var z_at_xy = (y2-y)/(y2-y1)*z_at_xy1 + (y-y1)/(y2-y1)*z_at_xy2;
+    
+    //And return it!
+    return z_at_xy;
+};
+
+
 
 THREE.Plane3Geometry = function ( width, height, widthSegments, heightSegments ) {
 
@@ -206,7 +298,6 @@ THREE.Plane3Geometry = function ( width, height, widthSegments, heightSegments )
     this.computeCentroids();
 
 };
-
 THREE.Plane3Geometry.prototype = Object.create( THREE.Geometry.prototype );
 
 // http://mrl.nyu.edu/~perlin/noise/

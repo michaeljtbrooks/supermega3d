@@ -181,6 +181,7 @@ SuperMega.resolve_3d_entity = function(entity, x_or_vector, y, z){
     var x_amt = 0;
     var y_amt = 0;
     var z_amt = 0;
+    var amount = 0;
     if(typeof x_or_vector.clone !== "undefined"){ //Has been given a vector to define rotation
         x_amt = x_or_vector.x;
         y_amt = x_or_vector.y;
@@ -302,12 +303,14 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
     lighting: {}, //The lights
     players: {}, //Players in the scene
     balls : {},
+    level_data : {}, //A copy of what's in the level
     
     //Single properties
     player: null, //The local player object
     nickname: "SuperMega", //The default player's name
     ball_counter: 0,  //The number of balls in the scene
-    background_scene: null //The background
+    background_scene: null, //The background
+    complete: false //Whether the level has been completed or not
 }); //JS inheritance hack part 2
 SuperMega.Level.prototype.create_background = function(options){
     /**
@@ -324,7 +327,7 @@ SuperMega.Level.prototype.create_background = function(options){
     //Process inputs
     options = options || {};
     options.image = options.image || null;
-    options.colour = options.colour || options.color || 0x87CEEB; //Default to sky blue
+    options.colour = options.colour || options.color || "sky"; //Default to sky blue
     
     
     //Parse options
@@ -334,11 +337,34 @@ SuperMega.Level.prototype.create_background = function(options){
         texture = THREE.ImageUtils.loadTexture( options.image );
         bg_material = new THREE.MeshBasicMaterial({
             map: texture,
-            color: options.color
+            color: options.colour
         });
     } else { //Just do a colour
-        	bg_material = new THREE.MeshBasicMaterial({
-            color: options.color
+        if(options.colour=="sky"){
+            //Create a background texture (skyblue gradient):
+            var size = 512;
+            // create canvas
+            var canvas = document.createElement( 'canvas' );
+            canvas.width = size;
+            canvas.height = size;
+            // get context
+            var context = canvas.getContext( '2d' );
+            // draw gradient
+            context.rect( 0, 0, size, size );
+            var gradient = context.createLinearGradient( 0, 0, 0, size );
+            gradient.addColorStop(0, '#87CEEB'); // light blue 
+            gradient.addColorStop(1, '#EDF9FE'); // Almost white
+            context.fillStyle = gradient;
+            context.fill();
+            // material texture
+            var texture = new THREE.Texture( canvas );
+            texture.needsUpdate = true; // important!
+        } else {
+            var texture = null;
+        }
+        bg_material = new THREE.MeshBasicMaterial({
+            color: options.colour,
+            map: texture
         });
     }
     
@@ -349,6 +375,7 @@ SuperMega.Level.prototype.create_background = function(options){
     );
     background_mesh.material.depthTest = false;
     background_mesh.material.depthWrite = false;
+    
     
     // Create your background scene
     this.background_scene = new THREE.Scene();
@@ -564,6 +591,7 @@ SuperMega.Level.prototype.build = function(data){
         data.noms = data.noms || [];
         data.debris = data.debris || [];
         data.ends = data.ends || data.end || [];
+        this.level_data = data; //Store a copy
         
         var self = this; //Allows us to reference this in the jQuery each loops
         
@@ -614,6 +642,16 @@ SuperMega.Level.prototype.build = function(data){
         //Fix start position and rotation:
         this.start_position = data.start_position || ZERO_VECTOR3;
         this.start_orientation = data.start_orientation || ZERO_EULER;
+};
+SuperMega.Level.prototype.respawn = function(){
+    /*
+     * Rebuilds the power ups in the level
+     */
+    //Build powerups
+    var self = this;
+    $.each(this.level_data.powerups, function(index,options){
+        self.add_powerup(options);
+    });
 };
 SuperMega.Level.prototype.animate = function(delta){
         /**
@@ -688,14 +726,14 @@ SuperMega.Level.prototype.add_ball = function(position, force, restitution, play
         ball._physijs.collision_masks = SuperMega.CollisionMasks.BALL;
 
         // Put the ball in the world
-        this.add( ball, "balls", 'p'+playerId+'b'+ballId);
+        var ball_id = 'p'+playerId+'b'+ballId;
+        ball.supermega_ball_id = ball_id; //Let the ball know who it is!
+        this.add( ball, "balls", ball_id);
 
         // Update matrices
         ball.updateMatrixWorld();
         ball.updateMatrix();
 
-        // Add the ball to the balls collection so I can keep track of it
-        //this.balls['p'+playerId+'b'+ballId] = ball;
 };
 SuperMega.Level.prototype.delete_ball_by_id = function(playerId, ballId){
         /**
@@ -711,12 +749,15 @@ SuperMega.Level.prototype.delete_ball_by_id = function(playerId, ballId){
             this.remove(this.balls[key], "balls", key); //Syntax is (obj, category, key)
         }
 };
-SuperMega.Level.prototype.ball_watcher = function(socket){
+SuperMega.Level.prototype.ball_watcher = function(socket, player){
         /**
          * Watches all the balls in a scene, removes ones which have fallen off
          * 
          * @param socket: <WebSocket> Which transmits player events
+         * @keyword player: <SuperMega.Player> The player to operate on (if omitted will use local player)
          */
+    
+    var player = player || this.player; //Default to local player
     
     // Check each ball
     var level = this;
@@ -724,29 +765,39 @@ SuperMega.Level.prototype.ball_watcher = function(socket){
         
         var ball_obj = level.balls[i];
             // If the ball belongs to the current player and has moved 50 units below origin - PURGE IT!
-            if (ball_obj.sourcePlayerId == playerId &&
+            if (ball_obj.sourcePlayerId == player.player_id &&
                 ball_obj.position.z < -50) {
-
-                // Notify other players the ball has been recycled
-                socket.emit('unfire', {
-                    playerId: playerId,
-                    ballId: ball_obj.ballId
-                });
-
-                // Remove the ball from the world
-                //deleteBallById(balls[i].sourcePlayerId, balls[i].ballId);
-                var source_player_id = level.balls[i].sourcePlayerId;
-                var ball_id = level.balls[i].ballId;
-                level.delete_ball_by_id(ball_obj.sourcePlayerId, ball_obj.ballId); //Actually removes it from the scene
-                D("Ball #"+ball_id+" from player #"+source_player_id+" has been removed!");
-
-                // Give the player back their ball and update their HUD
-                var player_obj = level.players[source_player_id];
-                //D(player_obj);
-                player_obj.currentBallCount--; 
-                player_obj.hud.currentBallCount.text(maxBallCount - currentBallCount);
+                this.unfire_ball(socket, ball_obj, player);
             }
         }
+};
+SuperMega.Level.prototype.unfire_ball = function(socket, ball, player){
+    /**
+     * Removes a ball from the game
+     * 
+     * @param socket: <WebSocket> Used to transmit notices to player
+     * @param ball: <Object> The ball we wish to bin
+     */
+    var player = player || this.player; //Default to local player
+    
+    // Notify other players the ball has been recycled
+    socket.emit('unfire', {
+        playerId: player.player_id,
+        ballId: ball.ballId
+    });
+
+    // Remove the ball from the world
+    //deleteBallById(balls[i].sourcePlayerId, balls[i].ballId);
+    var source_player_id = ball.sourcePlayerId;
+    var ball_id = ball.ballId;
+    this.delete_ball_by_id(ball.sourcePlayerId, ball.ballId); //Actually removes it from the scene
+    D("Ball #"+ball_id+" from player #"+source_player_id+" has been removed!");
+
+    // Give the player back their ball and update their HUD
+    var player_obj = this.players[source_player_id];
+    //D(player_obj);
+    player.currentBallCount--; 
+    player.hud.currentBallCount.text(player.maxBallCount - player.currentBallCount);
 };
 SuperMega.Level.prototype.get_terrain_z = function(x, y, liquids){
         /**
@@ -1096,6 +1147,7 @@ SuperMega.Level.prototype.add_terrain = function(options){
         var terrainGeometry = new THREE.Plane3RandGeometry( options.width_vertices, options.depth_vertices, options.width - 1, options.depth - 1 );
 
         // Apply the height map data, multiplier and subtractor to the plane vertices
+        var l = terrainGeometry.vertices.length;
         for ( i = 0, l = terrainGeometry.vertices.length; i < l; i ++ ) {
             terrainGeometry.vertices[ i ].z = floatData[ i ] * options.multiplier - options.subtractor;
         }
@@ -1130,11 +1182,24 @@ SuperMega.Level.prototype.add_terrain = function(options){
             this.add(t,"liquid_terrain");
         }
         
+        //Debug terrain:
+        D(t);
+        
         // Return the terrain mesh
         return t;
         
 };
-
+SuperMega.Level.prototype.completed = function(player){
+    /**
+     * Completes the level!
+     * 
+     * @param player: <SuperMega.Player> The player completing the level (will take local player as default)
+     */
+    // Flag as complete
+    this.complete = true;
+    
+    // Tear down scene
+}
 
 
 
@@ -1553,11 +1618,22 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
             var collision_results = null;
             if(!is_terrain){ //Objects are not terrain. The most efficient algorithm will be intersectObjects
                 collision_results = thisplayer.caster.intersectObjects(target_objects); //See what the outgoing rays hit
-            } else { //Objects ARE terrain. The most efficient algorithm will be intersectPlane();
-                collision_results = thisplayer.caster.intersectObjects(target_objects); //TODO: improve efficiency
-                if(DEBUG || true){ 
-                    thisplayer.drawRay(level, String(axis)+String(group_name)+ray_index, global_point, global_direction.clone().normalize(), thisplayer.caster.far);
-                }
+            } else { //Objects ARE terrain. The most efficient algorithm will be my manual "get_z" function;
+                collision_results = []; //An array which we will sort by distance later!
+                $.each(target_objects, function(index,terrain){
+                    var terrain_z = terrain.geometry.get_z(global_point.x, global_point.y); //This uses a "what is your height at x,y" algorithm which I've put onto THREE.Plane3RandGeometry
+                    var this_distance = thisplayer.position.z - terrain_z;
+                    var this_collision = {
+                        "distance" : this_distance,
+                        "object" : terrain
+                    }
+                    //We will ignore any terrain that's above you:
+                    if(this_distance >= 0){
+                        collision_results.push(this_collision);
+                    }
+                });
+                //Now sort collision_results by distance ascending:
+                collision_results.sort(function(a,b) {return (a.distance > b.distance) ? 1 : ((b.distance > a.distance) ? -1 : 0);} );
             }
             
             //Process collisions
@@ -1729,7 +1805,7 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
         var vector_to_move = (player.velocity[axis_dimension] + player.standing_on_velocity[axis_dimension]) * delta;
         //Put them into our collision function. Will only return an output movement in the current axis IF movement congruent with direction of axis
         verdict[axis] = player.get_directional_collisions(vector_to_move, axis, level.collidables); //to_move, axis_name, target_objects
-        verdict[axis] = player.get_directional_collisions(vector_to_move, axis, level.terrain, verdict[axis], true); //More efficient check vs terrain
+        verdict[axis] = player.get_directional_collisions(vector_to_move, axis, level.terrain, verdict[axis], true); //More efficient check vs terrain (uses get_z function)
         
         //Check for collisions in the direction of movement 
         if(axis_dimension=="z"){
@@ -1792,21 +1868,26 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
         $.merge(all_touched,axis_verdict.hit_touchables);
     });
     //Now perform all touch events:
+    var touched_this_round = [];
     $.each(all_touched, function(index,obj){
-        obj.touched(delta,player,level);
-        
+        //We need to deduplicate repeat touches in the same delta round (where multiple axis rays touch object)
+        if(touched_this_round.indexOf(obj)<0){
+            obj.touched(delta,player,level);
+            touched_this_round.push(obj);
+        }
     });
     
     
     //Collect any collectables you are touching:
     var hit_collectables = this.detectCollision(level.interactables);
     if(hit_collectables && level.loaded && player.ready){
-        console.log("Hit pickup!!")
+        console.log("Hit pickup!!");
         var already_hit = [];
-        $.each(hit_collectables.other_objects, function(){
-            if(already_hit.indexOf(this)==-1){ //Prevent double-collision issues
+        $.each(hit_collectables.other_objects, function(index, obj){
+            if(already_hit.indexOf(obj)<0){ //Prevent double-collision issues
                 this.collect(delta, player, level); //Collect this object!
-                already_hit.push(this);
+                already_hit.push(obj);
+                console.log(obj);
             }
         });
     }
@@ -1841,7 +1922,7 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
     player.__dirtyRotation = true;
     
     //Show debug info
-    this.update_debug_stats(verdict["x"].axis_move.toFixed(2), verdict["y"].axis_move.toFixed(2), verdict["z"].axis_move.toFixed(2)+" S:"+player.standing);
+    this.update_debug_stats(verdict["x"].axis_move.toFixed(2), verdict["y"].axis_move.toFixed(2), verdict["z"].axis_move.toFixed(2)+" S:"+player.standing);    
     
     //Return the friction so the rest of our engine can use it.
     return mu;
@@ -1882,6 +1963,7 @@ SuperMega.Player.prototype.reset = function(options, scene, hud){
         //Remove any straggling bodies:
         if(this.body){
             scene.remove(this.body);
+            this.body = null; //Reset body
         }
         
         //Show player!
@@ -1970,11 +2052,13 @@ SuperMega.Player.prototype.detectCollision = function(otherObjs){
             //Now look for collisions
             var collisionResults = this.caster.intersectObjects( target_objects );
             if ( collisionResults.length > 0 && collisionResults[0].distance < directionVector.length() ) { //Means this ray collided!
-                other_objects.push(collisionResults[0].object);
-                var closest_hit_to_centre = collisionResults[0].distance; //The closest point on the ray from origin which hit the object
-                var percentage_distance_hit = closest_hit_to_centre/directionVector.length(); //The percentage distance along the ray to the vertex where contact happened 
-                collision_detected = true;
-                rays_hit[ray_name] = percentage_distance_hit; //Our output dict
+                if(other_objects.indexOf(collisionResults[0].object)<0){ //Deduplication at source
+                    other_objects.push(collisionResults[0].object);
+                    var closest_hit_to_centre = collisionResults[0].distance; //The closest point on the ray from origin which hit the object
+                    var percentage_distance_hit = closest_hit_to_centre/directionVector.length(); //The percentage distance along the ray to the vertex where contact happened 
+                    collision_detected = true;
+                    rays_hit[ray_name] = percentage_distance_hit; //Our output dict
+                }
                 //console.log("Contact: "+ray_name);
             } else { //Ray did not collide
             }
@@ -1983,8 +2067,8 @@ SuperMega.Player.prototype.detectCollision = function(otherObjs){
         if(collision_detected){
             //console.log(rays_hit);
             return {
-            "other_objects" : other_objects,
-            "rays" : rays_hit
+                "other_objects" : other_objects,
+                "rays" : rays_hit
             };
         }
         return false;
@@ -2704,15 +2788,32 @@ SuperMega.Player.prototype.power_up = function(increment){
         }
         return outcome;
 }
-SuperMega.Player.prototype.respawn = function(level){
+SuperMega.Player.prototype.respawn = function(level, position){
+        /*
+         * Respawns the player at the given position:
+         * 
+         * @param level: <SuperMega.level> If provided, will seek out the levels start position
+         * @param position: <THREE.Vector3> If provided, will use this as the start point
+         */
         this.heal(100);
         this.reset();
+        
+        
         //And place the player back at the starting point:
+        var start_position = position || level.start_position || ZERO_VECTOR3;
         if(level){
-        	console.log(level);
-        	this.position.set(level.start_position.x, level.start_position.y, level.start_position.z);
-        	this.rotation.setFromVector3(level.start_orientation);
-        }
+        	console.log("Respawning");
+        	var start_position = level.start_position;
+        } 
+    	if(!start_position){
+    	    start_position = {
+    	            "x" : (0.5-Math.random())*level.world_width*4,
+    	            "y" : (0.5-Math.random())*level.world_depth*4
+    	    };
+    	    start_position["z"] = level.get_terrain_z(start_position.x,start_position.y)
+    	}
+    	this.position.set(start_position.x, start_position.y, start_position.z);
+    	this.rotation.setFromVector3(level.start_orientation || ZERO_EULER);
 }
 SuperMega.Player.prototype.injure = function(damage){
         /**
@@ -3038,7 +3139,8 @@ SuperMega.Interactable.prototype.animate = function(delta){
         this.amount_moved.z = (this.amount_moved.z + tz) % (2*Math.PI);
         this.position.x = this.ops.magnitude * Math.sin(this.amount_moved.x+0) + this.origin.x; //0 degrees
         this.position.y = this.ops.magnitude * Math.sin(this.amount_moved.y+Math.PI/2) + this.origin.y; //90 degree out of phase
-        this.position.z = this.ops.magnitude * Math.sin(this.amount_moved.z+Math.PI/2) + this.origin.z; //90 degree out of phase too
+        //This needs fixing... how do we do an inclined plane?
+        this.position.z = this.ops.magnitude * Math.sin(this.amount_moved.z) + this.origin.z; //90 degree out of phase too
     }
     //Calculate velocity:
     this.velocity.x = (this.position.x - pos_before.x)/delta;
@@ -3126,17 +3228,17 @@ SuperMega.Interactable.prototype.pickup = function(delta, player, level){
         this.material.transparent = true;
         this.material.opacity = 0.5;
     } else { //Does NOT regenerate, ttfo
-    if(level){ //Remove from scene
-        level.remove(this, "interactables");
-    } else {
-        //Otherwise just make contents transparent and deactivate animations etc
-        this.material.opacity = 0;
-        for(var i=0; i<this.contains.length; i++){
-        this.contains[i].material.opacity=0;
-        this.contains[i].material.transparent=true;
-        }
-    }
         this.active = false; //Non-regenerating ones always deactivate
+        if(level){ //Remove from scene
+            level.remove(this, "interactables");
+        } else {
+            //Otherwise just make contents transparent and deactivate animations etc
+            this.material.opacity = 0;
+            for(var i=0; i<this.contains.length; i++){
+                this.contains[i].material.opacity=0;
+                this.contains[i].material.transparent=true;
+            }
+        }
     }
 }
 SuperMega.Interactable.prototype.collect = function(delta, player, level){
@@ -3212,7 +3314,6 @@ SuperMega.Platform.prototype = Object.assign( Object.create(SuperMega.Interactab
         
         //Injure the player:
         if(this.inflicts_damage>0){
-            console.log("CUYNT");
             player.injure(this.inflicts_damage*delta);
         }
     }
@@ -3268,6 +3369,7 @@ SuperMega.Powerup = function(options){
     //Create the thing:
     SuperMega.Interactable.call( this, options ); //JS inheritance hack part 1
     this.collectable = true; //Can be collected
+    this.regenerates = false;
     
     //Pickups have shadows
     this.castShadow = true;
