@@ -647,8 +647,16 @@ SuperMega.Level.prototype.respawn = function(){
     /*
      * Rebuilds the power ups in the level
      */
-    //Build powerups
+    
+    //Remove existing power ups so we don't end up with duplicates:
     var self = this;
+    $.each(self.interactables, function(index,obj){
+        if(obj instanceof SuperMega.Powerup){
+            self.remove(obj, "interactables");
+        }
+    });
+    
+    //Build powerups
     $.each(this.level_data.powerups, function(index,options){
         self.add_powerup(options);
     });
