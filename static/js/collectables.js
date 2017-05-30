@@ -13,6 +13,52 @@
 var DEBUG = true;
 
 
+//Sorting out the deepcopy issue:
+function clone(obj, arr, i ,j){
+    if (typeof obj !== "object") {
+        return obj;
+    }
+    
+    var result = Object.create(Object.getPrototypeOf(obj)); //inherit the prototype of the original object
+    if(result instanceof Array){
+        result.length = Object.keys(obj).length;
+    }
+
+    i++; //depth is increased because we entered an object here
+    j = Object.keys(obj).length; //native method to get the number of properties in 'obj'
+    arr[i] = new Array(); //this is the x-axis, each index here is the depth
+    arr[i][j] = new Array(); //this is the y-axis, each index is the length of the object (aka number of props)
+    //start the depth at current and go down, cyclic structures won't form on depths more than the current one
+    for(var depth = i; depth >= 0; depth--){
+        //loop only if the array at this depth and length already have elements
+        if(arr[depth][j]){
+            for(var index = 0; index < arr[depth][j].length; index++){
+                if(obj === arr[depth][j][index]){
+                    return obj;
+                }
+            } 
+        }
+    }
+
+    arr[i][j].push(obj); //store the object in the array at the current depth and length
+    for (var prop in obj) {
+        result[prop] = clone(obj[prop], arr, i, j);
+    }
+
+    return result;
+}
+function deepclone(obj) {
+    var i = -1, //depth of the current object relative to the passed 'obj'
+        j = 0;  //number of the object's properties
+    var arr = new Array(); //3D array to store the references to objects
+    return clone(obj, arr, i, j);
+}
+Object.deepclone = function(){
+    return deepclone(this);
+};
+
+
+
 //Expanding on THREEjs:
 //Add in smart print declaration of values to Vector3
 THREE.Vector3.prototype.str = function(){
@@ -52,6 +98,22 @@ var D = function(str_msg){
 };
 
 
+//Central physics constants@:
+var phys = {
+        //Player
+        "TOP_SPEED" : 20.0, //Players top speed (m/s) at basic power
+        "ACCELERATION_CONST" : 120.0, //How fast a player accelerates (m per second per second) 
+        
+        //Friction
+        "SURFACE_DRAG_COEFF" : 8, //How rapidly velocity decays when on a surface
+        "AIR_DRAG_COEFF" : 0.05, //How rapidly velocity decays from the air resistance
+        "PLATFORM_STANDARD_FRICTION" : 0.84, //What our normal friction is
+        
+        //Other behaviour
+        "PLAYER_CAN_ACCELERATE_IN_AIR" : true //Will be used by our animation engine
+};
+
+
 //SuperMega Namespace
 window.SuperMega = {};
 
@@ -72,7 +134,7 @@ SuperMega.OBJECT_PRESETS = {
         "color": 0xAAEEFF,
         "transparent": true,
         "opacity": 0.6,
-        "friction": 0.1, //v low friction
+        "friction": 0.14, //v low friction
         "restitution": 0.4 //low restitution
     },
     "ground_terrain" : {
@@ -430,18 +492,17 @@ SuperMega.Level.prototype._scene_action = function(action, obj, category_name, i
                     console.log("WARNING: Level."+action+"(obj,"+category_name+",index_name) has not been given a valid object or index_name. Ignoring.");
                     return false;
                 }
-                
+                if (obj_index > -1) {
+                    D("Removing: "+obj.uuid);
+                    tracker.splice(obj_index, 1); //Remove the item
+                }
             }
             if(action=="add"){
                 if(!obj){
                     console.log("WARNING: Level."+action+"(obj,"+category_name+") has not been given a valid object to add. Ignoring.");
                     return false;
                 }
-            tracker.push(obj); //Add the object to our tracking vars
-            } else if(action=="remove"){
-                if (obj_index > -1) {
-                    tracker.splice(obj_index, 1); //Remove the item
-                }
+                tracker.push(obj); //Add the object to our tracking vars
             }
         } else { //It's a dict
             if(action=="add"){
@@ -476,7 +537,11 @@ SuperMega.Level.prototype._scene_action = function(action, obj, category_name, i
         }
         
         //And add to / remove from the scene:
-        this.scene[action](obj);
+        if(action=="add"){
+            this.scene.add(obj);
+        }else if(action=="remove"){
+            this.scene.remove(obj);
+        }
 };
 SuperMega.Level.prototype.add = function(obj,category_name,index_name){
         /**
@@ -594,9 +659,12 @@ SuperMega.Level.prototype.build = function(data){
         data.noms = data.noms || [];
         data.debris = data.debris || [];
         data.ends = data.ends || data.end || [];
-        this.level_data = data; //Store a copy
         
+        //Store a deepcopy:
         var self = this; //Allows us to reference this in the jQuery each loops
+        this.level_data = deepclone(data);
+        console.log("level_data");
+        console.log(this.level_data);
         
         //Build terrains
         $.each(data.terrain, function(index,options){
@@ -671,10 +739,17 @@ SuperMega.Level.prototype.respawn = function(){
     
     //Remove existing power ups so we don't end up with duplicates:
     var self = this;
+    var interactable_positions = {};
+    //In JS you cannot fiddle around with the entity you're iterating over!
+    //Resolve the location of each power up
     $.each(self.interactables, function(index,obj){
         if(obj instanceof SuperMega.Powerup){
-            self.remove(obj, "interactables");
+            interactable_positions[index] = obj;
         }
+    });
+    //Remove the power up from the scene:
+    $.each(interactable_positions, function(index,obj){
+        self.remove(obj,"interactables",index);
     });
     
     //Build powerups
@@ -1295,11 +1370,13 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
     STEPUP_AMOUNT: 0.4, //What size of z can your character step up onto (NB your height is 2) 
     POWER_STATES: {
         "jump" : [50,55,60,65],
-        "move" : [MOVE_SPEED*1.0, MOVE_SPEED*1.2, MOVE_SPEED*1.4, MOVE_SPEED*1.6],
+        "top_speed" : [phys.TOP_SPEED*1.0, phys.TOP_SPEED*1.2, phys.TOP_SPEED*1.4, phys.TOP_SPEED*1.6],
+        "acceleration" : [phys.ACCELERATION_CONST*1.0, phys.ACCELERATION_CONST*1.1, phys.ACCELERATION_CONST*1.2, phys.ACCELERATION_CONST*1.3],
         "shoot" : [1,2,3,4],
         "max_gradient" : [1.0,1.3,1.6,1.9],
     },
     MAX_RAY_LENGTH: 40.0, //Optimisation
+    CAN_ACCELERATE_IN_AIR: phys.PLAYER_CAN_ACCELERATE_IN_AIR, //Says whether we can change dir with WSAD keys in air 
     
     //Initialise variables:
     body: false, //When the patient dies adds a dead body to the scene
@@ -1344,6 +1421,18 @@ SuperMega.Player.prototype.on_collision = function(callback){
         console.log("Hit something: "+other_object.uuid);
     });
 };
+SuperMega.Player.prototype.state = function(prop){
+    /**
+     * Returns the appropriate power state for this player
+     * 
+     * @param prop: <str> the property to access
+     */
+    prop = prop || null;
+    if(prop){ //Return the requested property
+        return this.POWER_STATES[prop][this.power_state]
+    }
+    
+}
 SuperMega.Player.prototype.build_rays = function(){
         /**
          * Creates the collision detection rays
@@ -1593,6 +1682,7 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
     var ray_points = thisplayer.new_rays[axis]; //Where the rays will originate from
     var point_to_edge_distance = thisplayer.axis_point_to_edge_distances[axis]; //Distance from point to edge of character
     var relative_to_move = vector_to_move*direction_component; //The movement relative to the ray direction
+    var normalised_relative_to_move = relative_to_move / Math.abs(relative_to_move) || 0.0;
     var to_move = 0.0;
     if(relative_to_move<0.0){ //This means we are moving in an OPPOSITE direction to the ray. We will NOT allow a translation in that axis for this direction
         to_move = 0;
@@ -1624,12 +1714,12 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
     
     //Create rays and log collisions
     $.each(ray_points, function(group_name, ray_group){
-        var ray_length_multiplier = 5;
+        var ray_length_multiplier = 10;
         if(is_terrain){ //Raycast testing versus a heightmap is proper slow, so bin rays we don't care about
             if(group_name=="top" || group_name=="centre"){ //Bin top and central rays
                 return true; //This is a continue
             }
-            ray_length_multiplier = 1; //Optimisation, use only short rays
+            ray_length_multiplier = 4; //Optimisation, use only short rays
         }
         //Set up loop vars:
         output.collisions[group_name] = output.collisions[group_name] || []; //Permits concatenation from earlier runs
@@ -1773,9 +1863,10 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
         //Use the closest to touching floor item to deduce friction:
         var standing_on = null; //Default to not standing on stuff
         var hit_touchable = null;
-        if(shortest_dist <= (to_move+1*this.PLATFORM_GRACE)){ //Just come into contact with a platfornm
+        if(shortest_dist <= (to_move+1*this.PLATFORM_GRACE)){ //Just come into contact with a platform
             //Correct the movement to limit it to touching the platform
-            output.axis_move = shortest_dist; //+(1*this.PLATFORM_GRACE); //Update the z axis movement so you rise to the top of a platform if half sunk in it, or bash your head if jumping
+            //TODO: Rising platform jiggery. Fix the annoying bug where you jiggle about on a platform if its rising
+            output.axis_move = shortest_dist; //Update the z axis movement so you rise to the top of a platform if half sunk in it, or bash your head if jumping
             output.collided_with = output.min_collision.object; //Ensure we log this as a bonafide collision
             //Add in any traps etc with "touched" methods
             if(typeof output.min_collision !== "undefined"){
@@ -1828,7 +1919,7 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
     //Start with the Z axis... this plays totally differently, we make it absolute:
     //var vector_to_move = (player.velocity[axis] + player.standing_on_velocity[axis]) * delta;
     //verdict["z"] = player.get_directional_collisions(vector_to_move, axis, level.collidables, 1); //to_move, axis_name, target_objects, relative_direction (if vector zero)
-    var axis_list = ["z","z_minus","x","x_minus","y","y_minus"];
+    var axis_list = ["z_minus","z","x","x_minus","y","y_minus"];
     var side_axis_list = ["x","x_minus","y","y_minus"];
     $.each(axis_list, function(index,axis){
 
@@ -1924,9 +2015,9 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
         });
     }
     
-    //Velocity decay
-    //Horizontal velocity decay: //TODO: viscous fluids - e.g. drags through water
-    var mu = 0.5; //Standard friction of ground
+    //Velocity decay (phys. is just my dict of useful constants)
+    //Friction
+    var mu = 0.05; //Minimal friction in air
     if(standing_on) { //Only apply friction if we're actually standing on the platform!!
         var mu = standing_on.material._physijs.friction; //[z].standing_on is the floor object we are colliding with
         if(mu<=0 || mu > 10){
@@ -1934,20 +2025,26 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
         }
     }
     this.mu = mu;
-    //Perform self-initiated velocity decay
-    this.velocity.x = this.velocity.x - (this.velocity.x * 20.0 * mu * delta);
-    this.velocity.y = this.velocity.y - (this.velocity.y * 20.0 * mu * delta);
 
     //Gravity!! - only if not standing
-    if(!standing_on){
+    if(!standing_on){ //Player not standing on the platform
+        var x_surface_decay_amount = 0; //Not standing on anything!!
+        var y_surface_decay_amount = 0; //Not standing on anything!!
         player.velocity.z -= 9.8 * 10.0 * delta; // 10.0 = mass
         player.standing = false;
-    }else{
+    }else{ //Player IS standing on the platform
+        var x_surface_decay_amount = this.velocity.x * phys.SURFACE_DRAG_COEFF * mu * delta;
+        var y_surface_decay_amount = this.velocity.y * phys.SURFACE_DRAG_COEFF * mu * delta;
         player.standing = true;
         player.isJumping = false;
         //Adjust the player's velocity to match the platform
         player.adjustStandingOnVelocity(standing_on);
     }
+    
+    //Perform velocity decay (from friction and air resistance)
+    //NB f=ma so a=f/m. The number 5 details the relationship of opposing force vs driving force
+    this.velocity.x = this.velocity.x - x_surface_decay_amount - (this.velocity.x * phys.AIR_DRAG_COEFF * delta);
+    this.velocity.y = this.velocity.y - y_surface_decay_amount - (this.velocity.y * phys.AIR_DRAG_COEFF * delta);
     
     //Update position:
     player.__dirtyPosition = true;
@@ -3326,7 +3423,7 @@ SuperMega.Platform = function(options){
                                 transparent: (options.opacity < 1),
                                 opacity: options.opacity,
                             }),
-                            options.friction || .5, // normal friction
+                            options.friction || phys.PLATFORM_STANDARD_FRICTION, // normal friction
                             options.restitution || .4 // lowish restitution
                         );
     

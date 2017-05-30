@@ -1589,29 +1589,39 @@ function animate(delta) {
 	
         // Move forward
         if (
-            (isKeyDown(KEYCODE.W) && !isKeyDown(KEYCODE.S)) ||
-            (isKeyDown(KEYCODE.UP_ARROW) && !isKeyDown(KEYCODE.DOWN_ARROW)) // FIXME: This should do verical rotation (mouse replacement)
-           ) {
+                (player.CAN_ACCELERATE_IN_AIR || player.standing) &&
+                ((isKeyDown(KEYCODE.W) && !isKeyDown(KEYCODE.S)) || (isKeyDown(KEYCODE.UP_ARROW) && !isKeyDown(KEYCODE.DOWN_ARROW))) // FIXME: This should do vertical rotation (mouse replacement)
+           ){
             //playerMoved = moveIfInBounds(0, -playerSpeed,0) || playerMoved;
-            player.velocity.y -= POWER_STATES.move[player.power_state] * delta * traction;
+            player.velocity.y -= player.state("acceleration") * delta * traction; //v = u + at
         }
 
         // Move backward
-        if ((isKeyDown(KEYCODE.S) && !isKeyDown(KEYCODE.W))) {
+        if (    
+                (player.CAN_ACCELERATE_IN_AIR || player.standing) &&
+                ((isKeyDown(KEYCODE.S) && !isKeyDown(KEYCODE.W)) || (isKeyDown(KEYCODE.DOWN_ARROW) && !isKeyDown(KEYCODE.UP_ARROW)))
+           ) {
             //playerMoved = moveIfInBounds(0, playerSpeed,0) || playerMoved;
-            player.velocity.y += POWER_STATES.move[player.power_state] * delta * traction;
+            player.velocity.y += player.state("acceleration") * delta * traction;
         }
 
         // Strafe LEFT
-        if (isKeyDown(KEYCODE.A) && !isKeyDown(KEYCODE.D)) {
-            player.velocity.x += POWER_STATES.move[player.power_state] * 0.7 * delta * traction; //Strafing is slower than running
+        if ((player.CAN_ACCELERATE_IN_AIR || player.standing) && (isKeyDown(KEYCODE.A) && !isKeyDown(KEYCODE.D))) {
+            player.velocity.x += player.state("acceleration") * 0.7 * delta * traction; //Strafing is slower than running
         }
 
         // Strafe RIGHT
-        if (isKeyDown(KEYCODE.D) && !isKeyDown(KEYCODE.A)) {
+        if ((player.CAN_ACCELERATE_IN_AIR || player.standing) && 
+            (isKeyDown(KEYCODE.D) && !isKeyDown(KEYCODE.A))){
             //playerMoved = moveIfInBounds(-playerSpeed, 0,0) || playerMoved;
-            player.velocity.x -= POWER_STATES.move[player.power_state] * 0.7 * delta * traction;
+            player.velocity.x -= player.state("acceleration") * 0.7 * delta * traction;
         }
+        
+        //Cap out our max velocity (NB: doesn't affect standing_on_velocity!!
+        if(player.velocity.x > player.state("top_speed")){player.velocity.x = player.state("top_speed");}
+        if(player.velocity.x < -player.state("top_speed")){player.velocity.x = -player.state("top_speed");}
+        if(player.velocity.y > player.state("top_speed")){player.velocity.y = player.state("top_speed");}
+        if(player.velocity.y < -player.state("top_speed")){player.velocity.y = -player.state("top_speed");}
 
         // Rotate left
         if (isKeyDown(KEYCODE.LEFT_ARROW) && !isKeyDown(KEYCODE.RIGHT_ARROW)) {
@@ -1631,7 +1641,7 @@ function animate(delta) {
         
         //Jump!
         if (isKeyDown(KEYCODE.SPACE)){ //Can only jump if not falling or already jumping
-            if((player.velocity.z < 0.5) && (player.velocity.z > -0.5) && !player.isJumping){ //You can only launch off 
+            if((player.velocity.z < 0.5) && (player.velocity.z > -0.5) && !player.isJumping && player.jump_keydown_continuously===false){ //You can only launch off 
                 player.isJumping = true;
                 player.jump_keydown_continuously = JUMP_BOOST_TIME; //Max duration of keypress in seconds
                 player.velocity.z = 0.10*POWER_STATES.jump[player.power_state];
@@ -1639,16 +1649,16 @@ function animate(delta) {
                 console.log(player);
             }
             if(player.jump_keydown_continuously>0){ //Increase the jump height the longer you press that key for
-        	var z_time_factor = delta;
-        	if(z_time_factor > player.jump_keydown_continuously){
-        	    z_time_factor = player.jump_keydown_continuously;
-        	}
-        	player.velocity.z = player.velocity.z + (z_time_factor/JUMP_BOOST_TIME)*0.80*POWER_STATES.jump[player.power_state]; //Increment jump by up to 20% if key held by the 0.15s
-        	player.jump_keydown_continuously -= z_time_factor;
+            	var z_time_factor = delta;
+            	if(z_time_factor > player.jump_keydown_continuously){
+            	    z_time_factor = player.jump_keydown_continuously;
+            	}
+            	player.velocity.z = player.velocity.z + (z_time_factor/JUMP_BOOST_TIME)*0.80*POWER_STATES.jump[player.power_state]; //Increment jump by up to 20% if key held by the 0.15s
+            	player.jump_keydown_continuously -= z_time_factor;
             }
         }
-        if(keys[KEYCODE.SPACE]===false || player.isJumping === false){
-            //Means the jump key has been released, or you've hit something
+        if(!isKeyDown(KEYCODE.SPACE)){
+            //Means the jump key has been released
             player.jump_keydown_continuously = false; //Turn this off
         }
         
