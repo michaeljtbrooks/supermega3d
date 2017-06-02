@@ -121,6 +121,45 @@ var level_contents = {
             "start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
         },
         
+        //Level 3 is defined below (has some randomisation on each run
+        
+        4:{ //Level 4 = Castle Park. A central castle tower with castle gardens 
+            "terrain":[
+                {"width":160, "depth":160, "width_vertices":32, "depth_vertices":32, "multiplier":0.25, "subtractor":0}
+            ],
+            "platforms":[
+                {"size":[3,160,14], "position":[-80,0,-2], "colour":0x564510}, //Wall1
+                {"size":[3,160,14], "position":[80,0,-2], "colour":0x564510}, //Wall2
+                {"size":[160,3,14], "position":[0,-80,-2], "colour":0x564510}, //Wall3
+                {"size":[160,3,14], "position":[0,80,-2], "colour":0x564510}, //Wall3
+                {"mesh_shape":"cylinder", "size":[30,30,200], "colour":0xF0F0E0, "position":[0,0,92], "orientation":[DEG90,0,0]}, //Big F/O cylinder
+                {"mesh_shape":"cylinder", "size":[38,38,3], "position":[0,0,193], "orientation":[DEG90,0,0]},  //Big F/O cylinder topper
+                //Ground orbiter cw
+                {"size":[16,16,4], "position":[0,0,-3], "orientation":[0,0,0], "translation":[1,1,0], "translation_mode":"orbiting", "magnitude":41}, //First moving platform
+                //Orbiter acw
+                {"size":[12,12,4], "position":[0,0,3], "orientation":[0,0,DEG45], "translation":[-1.2,-1.2,0], "translation_mode":"orbiting", "magnitude":38},
+                //Solitary stable platform floor 2
+                {"size":[20,20,2], "position":[-50,50,10], "orientation":[0,0,DEG45]},
+                //Slope to floor 3
+                {"size":[8,20,2], "position":[-32,26,16], "orientation":[-DEG45/2,0,DEG45,"ZXY"]}
+            ],
+            "traps":[
+                //Spinning bar floor 3
+                {"size":[80,2,4], "position":[0,0,22], "angular_momentum":[0,0,DEG45], "rotation_mode":"continuous"}
+            ],
+            "noms":[
+                {"position":[0,0,5.5], "translation":[-1.2,-1.2,0], "translation_mode":"orbiting", "magnitude":35}, //Sits on first floor acw    
+            ],
+            "powerups":[
+                {"position":[-55,55,12]}
+            ],
+            "ends":[],
+            "world_width":32,
+            "world_depth":32,
+            "start_position": new THREE.Vector3(40,50,12), //Where player starts
+            "start_orientation" : new THREE.Euler(0,0,-DEG45) //Face the cylinder
+        }
+        
 };
 
 //Level 3 = Tubular hell
@@ -310,7 +349,7 @@ level_contents[3] = tubular_hell;
 
 var DEBUG = true; //Debug mode
 var level; //Where we'll store our level
-var level_number = 2; //What level to start on (overridden by Sandbox if on)
+var level_number = 4; //What level to start on (overridden by Sandbox if on)
 var sandbox = false; //Whether to build our debug environment instead of levels
 
     // screen size
@@ -1155,9 +1194,12 @@ function createScene(data) {
         
         
         //Replace with our new Level.add_terrain methods
+        console.log(data.water.data);
         level.add_terrain({
             "height_data" : data.water.data, //Mandatory
             "preset" : "water_terrain",
+            "width" : data.water.worldWidth,
+            "depth" : data.water.worldHeight,
             "width_vertices" : data.water.width,
             "depth_vertices" : data.water.height,
             "multiplier" : data.water.multiplier,

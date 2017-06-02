@@ -48,7 +48,7 @@ THREE.Geometry.prototype.computeCentroids = function(mesh){
 
 
 THREE.Plane3RandGeometry = function ( width, height, widthSegments, heightSegments ) {
-    /*
+    /**
      * Plane 3RandGeometry
      * 
      * Generates a randomised heightmap
@@ -73,6 +73,9 @@ THREE.Plane3RandGeometry = function ( width, height, widthSegments, heightSegmen
             "x_spacing" : width/widthSegments,
             "y_spacing" : height/heightSegments,
     };
+    
+    //console.log("Plane3RandGeometry Creation");
+    //console.log(this.creation_settings);
 
     var ix, iz,
         width_half = width / 2,

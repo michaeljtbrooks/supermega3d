@@ -209,7 +209,7 @@ SuperMega.CollisionMasks = {
 
 
 //--- Stand alone functions ---
-SuperMega.resolve_3d_entity = function(entity, x_or_vector, y, z){
+SuperMega.resolve_3d_entity = function(entity, x_or_vector, y, z, order){
     /**
      * Turns the supplied arguments into a THREE.Vector3 object.
      * 
@@ -237,21 +237,24 @@ SuperMega.resolve_3d_entity = function(entity, x_or_vector, y, z){
         return null;
     }
     
-    //console.log("Given "+(typeof x_or_vector));
-    //console.log(x_or_vector);
+    console.log("Given "+(typeof x_or_vector));
+    console.log(x_or_vector);
     
     var x_amt = 0;
     var y_amt = 0;
     var z_amt = 0;
     var amount = 0;
+    order = order || "XYZ";
     if(typeof x_or_vector.clone !== "undefined"){ //Has been given a vector to define rotation
         x_amt = x_or_vector.x;
         y_amt = x_or_vector.y;
         z_amt = x_or_vector.z;
+        order = x_or_vector.order || order;
     }else if(typeof x_or_vector.push !== "undefined"){ //Has been given an array to define rotation
         x_amt = x_or_vector[0] || 0;
         y_amt = x_or_vector[1] || 0;
         z_amt = x_or_vector[2] || 0;
+        order = x_or_vector[3] || order;
     }else if(x_or_vector == "random" || x_or_vector == "Random" || typeof x_or_vector=="undefined"){ //Means randomise me!!
         amount = y || 0.2*Math.PI;
         x_amt = (Math.random()-0.5) * amount; //Tilt 
@@ -263,10 +266,10 @@ SuperMega.resolve_3d_entity = function(entity, x_or_vector, y, z){
         z_amt = z || 0;
     }
     
-    //D("Resolved "+entity+": "+x_amt+","+y_amt+","+z_amt);
+    D("Resolved "+entity+": "+x_amt+","+y_amt+","+z_amt+" ("+order+")");
     
     if(entity=="euler"){ //Return a euler
-        return new THREE.Euler(x_amt, y_amt, z_amt);
+        return new THREE.Euler(x_amt, y_amt, z_amt, order);
     } else { //Return a Vector3 by default
         return new THREE.Vector3(x_amt, y_amt, z_amt);
     }
@@ -1203,9 +1206,17 @@ SuperMega.Level.prototype.add_terrain = function(options){
         }
         
         //Deal with the slight name variances between the node.js server and this function
-        var data = options.height_data || null; //This is mandatory!
+        var data = options.height_data || false; //This is mandatory!
         if(!data){ //Generate some random heightmatrix data
-            
+            var data = []; //Empty array
+            noise.seed(Math.random());
+            for (var y = 0; y<=options.depth_vertices; y++) { //Y decreases FFS
+                for (var x = 0; x <= options.width_vertices; x++) {
+                    var z_value = noise.simplex2(x+1 / 100, y+1 / 100); //Generates value in range -1 to 1
+                    data.push(z_value); //Simply add it on!
+                }
+            }
+            D(data);
         }
         if(!data){
             console.log("ERROR: SuperMega.Level.add_terrain - you must supply an array of vertex heights in order to generate a terrain!!");
@@ -1214,11 +1225,13 @@ SuperMega.Level.prototype.add_terrain = function(options){
         
         options.width = options.width || options.worldWidth || this.world_width;
         options.depth = options.depth || options.worldDepth || this.world_depth;
-        options.width_vertices = options.width_vertices || Math.round(options.width)*2; //Defaults to twice world width
-        options.depth_vertices = options.depth_vertices || Math.round(options.depth)*2; //Defaults to twice world width
-        options.multiplier = options.multipler || 0.25; //Defaults to gently undulating green ground
+        options.width_vertices = options.width_vertices || Math.round(options.width*0.25); //Defaults to a quarter of world width
+        options.depth_vertices = options.depth_vertices || Math.round(options.depth*0.25); //Defaults to a quarter world depth
+        options.multiplier = options.multiplier || 0.25; //Defaults to gently undulating green ground
         options.subtractor = options.subtractor || 6; //Defaults to rather central average height (just like ground)
         options.liquid = options.liquid || false; //Normally not a liquid
+        //console.log("Imported options");
+        //console.log(options);
         
         //Handle material
         if(!options.material || typeof options.material == "undefined"){
@@ -1251,7 +1264,7 @@ SuperMega.Level.prototype.add_terrain = function(options){
         }
 
         // Provision a new three-dimensional plane with the given number of vertices
-        var terrainGeometry = new THREE.Plane3RandGeometry( options.width_vertices, options.depth_vertices, options.width - 1, options.depth - 1 );
+        var terrainGeometry = new THREE.Plane3RandGeometry(options.width, options.depth, options.width_vertices-1, options.depth_vertices-1); //Seems to swap worldwidth for vertices??
 
         // Apply the height map data, multiplier and subtractor to the plane vertices
         var l = terrainGeometry.vertices.length;
@@ -1265,7 +1278,7 @@ SuperMega.Level.prototype.add_terrain = function(options){
         terrainGeometry.computeCentroids();
 
         // Create the terrain physics mesh - heightfield because it's a perfect fit
-        var t = new Physijs.HeightfieldMesh(terrainGeometry, options.material, 0, options.width - 1, options.depth - 1);
+        var t = new Physijs.HeightfieldMesh(terrainGeometry, options.material, 0, options.width_vertices-1, options.depth_vertices-1);
 
         // Terrain Behaviour
         if(!options.liquid){
@@ -3128,16 +3141,18 @@ SuperMega.Interactable = function (options){
     var ops = {
         "geometry" : options.geometry || null, //Will use a blank cube to contain everything
         "material" : options.material || null, //Will be transparent cube
+        "mesh_shape" : options.mesh_shape || options.mesh_type || "box", //What shape the bouding box has
         "mass" : options.mass || 0,
         "contains" : options.contains || [], //Sub objects, contained within
         "position" : options.position || null,
         "size" : options.size || [1,1,1],
+        "segments" : options.segments || [32,32,32],
         "color" : options.color || options.colour || 0xA0A0A0,
         "opacity" : options.opacity || 1,
         "friction" : options.friction || .5,
         "restitution" : options.friction || .4,
         "orientation" : options.orientation || new THREE.Vector3(0,0,0),
-        "angular_momentum" : options.angular_momentum || new THREE.Vector3(0,0,0),
+        "angular_momentum" : options.angular_momentum || new THREE.Euler(0,0,0),
         "translation" : options.translation || new THREE.Vector3(0,0,0),
         "rotation_mode" : options.rotation_mode || null,
         "translation_mode" : options.translation_mode || null,
@@ -3160,10 +3175,32 @@ SuperMega.Interactable = function (options){
         }
     }
     
+    //Resolve sizes and segments:
+    if(!(ops.geometry instanceof THREE.Geometry)){ //User has supplied an array [x,y,z] sizes instead of a geometry object, so create
+        var sizes = ops.size || ops.sizes || [1,1,1];
+        var width_geo = sizes[0];
+        var depth_geo = sizes[1] || width_geo;
+        var height_geo = sizes[2] || width_geo;
+        
+        var segments = ops.segments || [32,32];
+        var width_segments = segments[0];
+        var height_segments = segments[1] || width_segments;
+    }
+    
     //Resolve geometry and material
     if(ops.geometry==null){
         //Create default geometry:
-        ops.geometry = new THREE.CubeGeometry(1, 1, 1, 1, 1, 1);
+        if(ops.mesh_shape=="box" || ops.mesh_shape=="cube"){
+            ops.geometry = new THREE.CubeGeometry(width_geo, depth_geo, height_geo);
+        }else if(ops.mesh_shape=="sphere"){
+            //Spheres take their size as [radius,] and their segments as [width_seg, height_seg]
+            ops.geometry = new THREE.SphereGeometry(width_geo, width_segments, height_segments); 
+        }else if(ops.mesh_shape=="cylinder" || ops.mesh_shape=="cone" || ops.mesh_shape=="capsule"){
+            //Cylinders take their size as [radius_top, radius_bottom, height]
+            ops.geometry = new THREE.CylinderGeometry(width_geo, depth_geo, height_geo, width_segments, height_segments); 
+        } else {
+            throw Error("SuperMega.Interactables: Sorry, "+mesh_shape+" mesh shape requires you to supply the geometry yourself. Set 'geometry' in the options.");
+        }
     }
     if(ops.material==null){
         ops.material = Physijs.createMaterial(
@@ -3176,10 +3213,14 @@ SuperMega.Interactable = function (options){
                                     ops.restitution // low restitution
                                 );
     } 
+    this.ops = ops;     //Store our options globally
     
     //Now we have enough to create our object:
-    Physijs.BoxMesh.call(this, ops.geometry, ops.material, ops.mass ); //JS inheritance hack part 1
-    this.ops = ops;     //Store our options globally
+    Physijs.Mesh.call(this, ops.geometry, ops.material, ops.mass ); //JS inheritance hack part 1
+    //This is where we'll add the shape options:
+    this.generate_shape_specific_properties(ops.mesh_shape, ops.geometry, ops.material, ops.mass);
+    
+    
     
     //Set up physical location
     this.position.set(ops.position.x,ops.position.y,ops.position.z); //Since r85.2, position is read-only, so call position.set
@@ -3214,9 +3255,148 @@ SuperMega.Interactable = function (options){
     this.rotation_matrix = new THREE.Matrix4(); //Necessary to do axis rotations
 
 }
-SuperMega.Interactable.prototype = Object.assign( Object.create(Physijs.BoxMesh.prototype), {
+SuperMega.Interactable.prototype = Object.assign( Object.create(Physijs.Mesh.prototype), {
     constructor: SuperMega.Interactable
 }); //JS inheritance hack part 2
+SuperMega.Interactable.prototype.generate_shape_specific_properties = function(mesh_shape, geometry, material, mass){
+    /**
+     * Generates the special geometry vars for the shape (this is an implementation of the
+     * logic of the PhysiJS applied mesh constructors.
+     * 
+     * @param mesh_shape: <str> the mesh shape to init
+     *  
+     *      Choices:
+     *          plane
+     *          box
+     *          sphere
+     *          cylinder
+     *          capsule
+     *          cone
+     *          concave
+     *          convex
+     */
+    //Sanitise inputs
+    geometry = geometry || this.ops.geometry;
+    material = material || this.ops.material;
+    mass = mass || this.ops.mass;
+    
+    //Ensure bounding box computed
+    if ( !geometry.boundingBox ) {
+        geometry.computeBoundingBox();
+    }
+    
+    var i, width, height, depth, vertices, face, triangles=[], points=[];
+    
+    //Build shape-specific vars:
+    if(mesh_shape == "plane"){
+        width = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+        height = geometry.boundingBox.max.y - geometry.boundingBox.min.y;
+
+        this._physijs.type = 'plane';
+        this._physijs.normal = geometry.faces[0].normal.clone();
+        this._physijs.mass = (typeof mass === 'undefined') ? width * height : mass;
+    } else if(mesh_shape == "box" || mesh_shape=="cube"){
+        width = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+        height = geometry.boundingBox.max.y - geometry.boundingBox.min.y;
+        depth = geometry.boundingBox.max.z - geometry.boundingBox.min.z;
+
+        this._physijs.type = 'box';
+        this._physijs.width = width;
+        this._physijs.height = height;
+        this._physijs.depth = depth;
+        this._physijs.mass = (typeof mass === 'undefined') ? width * height * depth : mass;
+    
+    } else if(mesh_shape == "sphere"){
+        this._physijs.type = 'sphere';
+        this._physijs.radius = geometry.boundingSphere.radius;
+        this._physijs.mass = (typeof mass === 'undefined') ? (4/3) * Math.PI * Math.pow(this._physijs.radius, 3) : mass;
+    
+    } else if(mesh_shape == "cylinder"){
+        width = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+        height = geometry.boundingBox.max.y - geometry.boundingBox.min.y;
+        depth = geometry.boundingBox.max.z - geometry.boundingBox.min.z;
+
+        this._physijs.type = 'cylinder';
+        this._physijs.width = width;
+        this._physijs.height = height;
+        this._physijs.depth = depth;
+        this._physijs.mass = (typeof mass === 'undefined') ? width * height * depth : mass;
+    
+    } else if(mesh_shape == "capsule"){
+        width = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+        height = geometry.boundingBox.max.y - geometry.boundingBox.min.y;
+        depth = geometry.boundingBox.max.z - geometry.boundingBox.min.z;
+
+        this._physijs.type = 'capsule';
+        this._physijs.radius = Math.max(width / 2, depth / 2);
+        this._physijs.height = height;
+        this._physijs.mass = (typeof mass === 'undefined') ? width * height * depth : mass;
+    
+    } else if(mesh_shape == "cone"){
+        width = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+        height = geometry.boundingBox.max.y - geometry.boundingBox.min.y;
+
+        this._physijs.type = 'cone';
+        this._physijs.radius = width / 2;
+        this._physijs.height = height;
+        this._physijs.mass = (typeof mass === 'undefined') ? width * height : mass;
+    
+    } else if(mesh_shape == "concave"){
+        vertices = geometry.vertices;
+
+        for ( i = 0; i < geometry.faces.length; i++ ) {
+            face = geometry.faces[i];
+            if ( face instanceof THREE.Face3) {
+
+                triangles.push([
+                    { x: vertices[face.a].x, y: vertices[face.a].y, z: vertices[face.a].z },
+                    { x: vertices[face.b].x, y: vertices[face.b].y, z: vertices[face.b].z },
+                    { x: vertices[face.c].x, y: vertices[face.c].y, z: vertices[face.c].z }
+                ]);
+
+            } else if ( face instanceof THREE.Face4 ) {
+
+                triangles.push([
+                    { x: vertices[face.a].x, y: vertices[face.a].y, z: vertices[face.a].z },
+                    { x: vertices[face.b].x, y: vertices[face.b].y, z: vertices[face.b].z },
+                    { x: vertices[face.d].x, y: vertices[face.d].y, z: vertices[face.d].z }
+                ]);
+                triangles.push([
+                    { x: vertices[face.b].x, y: vertices[face.b].y, z: vertices[face.b].z },
+                    { x: vertices[face.c].x, y: vertices[face.c].y, z: vertices[face.c].z },
+                    { x: vertices[face.d].x, y: vertices[face.d].y, z: vertices[face.d].z }
+                ]);
+
+            }
+        }
+
+        width = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+        height = geometry.boundingBox.max.y - geometry.boundingBox.min.y;
+        depth = geometry.boundingBox.max.z - geometry.boundingBox.min.z;
+
+        this._physijs.type = 'concave';
+        this._physijs.triangles = triangles;
+        this._physijs.mass = (typeof mass === 'undefined') ? width * height * depth : mass;
+    
+    } else if(mesh_shape == "convex"){
+        for ( i = 0; i < geometry.vertices.length; i++ ) {
+            points.push({
+                x: geometry.vertices[i].x,
+                y: geometry.vertices[i].y,
+                z: geometry.vertices[i].z
+            });
+        }
+
+
+        width = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+        height = geometry.boundingBox.max.y - geometry.boundingBox.min.y;
+        depth = geometry.boundingBox.max.z - geometry.boundingBox.min.z;
+
+        this._physijs.type = 'convex';
+        this._physijs.points = points;
+        this._physijs.mass = (typeof mass === 'undefined') ? width * height * depth : mass;
+    }
+};
 SuperMega.Interactable.prototype.animate = function(delta){
     /**
      * Animates the object if applicable
@@ -3291,7 +3471,7 @@ SuperMega.Interactable.prototype.resolve_vector = function(x_or_vector, y, z){
      */
     return SuperMega.resolve_vector(x_or_vector, y, z);
 }
-SuperMega.Interactable.prototype.orientate = function(x_or_vector, y, z, amount){
+SuperMega.Interactable.prototype.orientate = function(x_or_vector, y, z, amount, order){
     /**
      * Changes the orientation of this object to what you specify
      * 
@@ -3303,28 +3483,28 @@ SuperMega.Interactable.prototype.orientate = function(x_or_vector, y, z, amount)
      *  @param amount: The proportion of 90 degrees you wish to rotate by if using "random"
      *      
      */
-    
+    order = order || "XYZ"
     if(typeof x_or_vector.clone !== "undefined"){ //Has been given a vector to define rotation
-    var x_rotation_amt = x_or_vector.x;
-    var y_rotation_amt = x_or_vector.y;
-    var z_rotation_amt = x_or_vector.z;
+        var x_rotation_amt = x_or_vector.x;
+        var y_rotation_amt = x_or_vector.y;
+        var z_rotation_amt = x_or_vector.z;
+        order = x_or_vector.order || order;
     }else if(typeof x_or_vector == "Array"){ //Has been given an array to define rotation
-    var x_rotation_amt = x_or_vector[0] || 0;
-    var y_rotation_amt = x_or_vector[1] || 0;
-    var z_rotation_amt = x_or_vector[2] || 0;
+        var x_rotation_amt = x_or_vector[0] || 0;
+        var y_rotation_amt = x_or_vector[1] || 0;
+        var z_rotation_amt = x_or_vector[2] || 0;
+        order = x_or_vector[3] || order;
     }else if(x_or_vector == "random" || x_or_vector == "Random" || typeof x_or_vector=="undefined"){ //Means randomise me!!
-    amount = amount || y || 0.2;
-    var x_rotation_amt = (Math.random()-0.5) * amount * Math.PI; //Tilt 
-    var y_rotation_amt = (Math.random()-0.5) * amount * Math.PI;
-    var z_rotation_amt = Math.random() * Math.PI;
+        amount = amount || y || 0.2;
+        var x_rotation_amt = (Math.random()-0.5) * amount * Math.PI; //Tilt 
+        var y_rotation_amt = (Math.random()-0.5) * amount * Math.PI;
+        var z_rotation_amt = Math.random() * Math.PI;
     }else{
-    var x_rotation_amt = x_or_vector || 0;
-    var y_rotation_amt = y || 0;
-    var z_rotation_amt = z || 0;
+        var x_rotation_amt = x_or_vector || 0;
+        var y_rotation_amt = y || 0;
+        var z_rotation_amt = z || 0;
     }
-    this.rotation.x = x_rotation_amt;
-    this.rotation.y = y_rotation_amt;
-    this.rotation.z = z_rotation_amt;
+    this.rotation.set(x_rotation_amt, y_rotation_amt, z_rotation_amt, order);
     this.__dirtyRotation = true;
     this.geometry.verticesNeedUpdate = true;
     return this;
@@ -3399,6 +3579,7 @@ SuperMega.Platform = function(options){
     options.opacity = options.opacity || 1;
     options.color = options.color || options.colour || SuperMega.DEFAULT_COLOURS.platform;
     options.preset = options.preset || null;
+    options.size = options.size || [10,10,2];
     if(options.preset!=null){
         //Means replace our objects with the present values
         var preset = SuperMega.OBJECT_PRESETS[options.preset] || null;
@@ -3408,15 +3589,7 @@ SuperMega.Platform = function(options){
             console.log("WARNING: Preset '"+options.preset+"' is not a known valid preset name!");
         }
     }
-    
-
-    //Fix the geometry etc. DEfaults to 10,10,2
-    options.geometry = options.geometry || null;
-    if(!(options.geometry instanceof THREE.Geometry)){ //User has supplied an array [x,y,z] sizes instead of a geometry object, so create
-        var sizes = options.geometry || options.size || options.sizes || [];
-        console.log("Sizes: "+sizes.toString());
-        options.geometry = new THREE.CubeGeometry(sizes[0] || 10, sizes[1] || 10, sizes[2] || 2);
-    }
+    options.geometry = options.geometry || null; //Geometry is now done in the parent Interactables if not supplied
     options.material = options.material || Physijs.createMaterial(
                             new THREE.MeshPhongMaterial( {
                                 color: options.color || SuperMega.DEFAULT_COLOURS.platform, 
