@@ -2,12 +2,23 @@
 
 /**
  * Supermega3D
- *     Collectables and Interactables
+ *     Main classes defining the level wrapper, level objects and their behaviour 
  *     
- *     These are items you can touch and interact with
+ *     SuperMega.Level: Level wrapper which contains the Physijs scene, and pointers to scene objects
+ *     
+ *     SuperMega.Player: The player and their behaviour
+ *     
+ *     SuperMega.Interactable: Abstract class which defines how objects move and behave
+ *     SuperMega.Nom: A collectable item. You need to get enough of these in order for the level End to be active
+ *     SuperMega.Platform: A platform. The thing you can stand on!
+ *     SuperMega.Powerup: A power up. Reheals you, improves your speed, jump height, slope tolerance, ball chucking (lowest power cannot chuck balls)
+ *     SuperMega.Switcher: A switch. When you touch it, or hit it with a ball, it turns on and stuff happens
+ *     SuperMega.TheEnd: Level end. If you touch this, you win the level.
+ *     SuperMega.Trap: Blue platform which saps your life if touched. Nasty. Avoid it!
+ *        
  * 
  * @author Dr Michael Brooks / @michaeljtbrooks
- * Last Updated: 2017-05-14 15:50 UTC 
+ * Last Updated: 2017-06-04 19:59 UTC 
  */
 
 var DEBUG = true;
@@ -347,6 +358,7 @@ SuperMega.Level = function( scene, level_number, options){
     //Resolve inputs:
     this.world_width = options.world_width || 64;
     this.world_depth = options.world_depth || 64;
+    this.socket = this.socket || null;
     
     //Resolve scene
     scene = scene || null;
@@ -916,6 +928,7 @@ SuperMega.Level.prototype.ball_watcher = function(socket, player){
          */
     
     var player = player || this.player; //Default to local player
+    var socket = socket || this.socket; //Comms socket
     
     // Check each ball
     var level = this;
@@ -937,12 +950,18 @@ SuperMega.Level.prototype.unfire_ball = function(socket, ball, player){
      * @param ball: <Object> The ball we wish to bin
      */
     var player = player || this.player; //Default to local player
+    var socket = socket || this.socket; //Comms socket
     
     // Notify other players the ball has been recycled
-    socket.emit('unfire', {
-        playerId: player.player_id,
-        ballId: ball.ballId
-    });
+    if(socket){
+        socket.emit('unfire', {
+            playerId: player.player_id,
+            ballId: ball.ballId
+        });
+    } else {
+        D("No socket to communicate Level.unfire_ball!");
+    }
+    
 
     // Remove the ball from the world
     //deleteBallById(balls[i].sourcePlayerId, balls[i].ballId);
@@ -1516,8 +1535,17 @@ SuperMega.Player.prototype.on_collision = function(level, callback){
      * 
      */
     console.log("Collision event loaded");
+    var player = this;
     this.addEventListener( 'collision', function( other_object, relative_velocity, relative_rotation, contact_normal ) {
         console.log("Hit something: "+other_object.uuid);
+        
+        if(other_object.supermega_ball_id){
+            //You got hit by a ball!!
+            if(other_object.sourcePlayerId == player.player_id){ //It's your own ball
+                //collect your own ball
+                level.unfire_ball(null, other_object, player); //The level can retrieve its own socket
+            }
+        }
         
         //Fire our callback!
         try{

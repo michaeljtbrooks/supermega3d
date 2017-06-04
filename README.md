@@ -46,7 +46,7 @@ DONE) Add transfer of platform momentum you are standing on to you
 DONE) Static and moving traps
 DONE) Power-up objects
 4) Enemies with some degree of AI
-5) Switch-operated doors
+DONE) Switch-operated doors / platforms
 DONE) Level loader (the first Super Mega worked really well because I could bang out levels in minutes by using Paint. The 
 code would load the bitmaps then interpret items based on pixel colour. I'd love to have the same sort of arrangement
 where  we construct levels quickly in Blender then load them in.)

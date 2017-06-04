@@ -5,7 +5,7 @@
  *
  * @author Kevin Fitzgerald / @kftzg / http://kevinfitzgerald.net
  * @author Dr Michael Brooks / @michaeljtbrooks
- * Last Updated: 2017-05-14 15:50 UTC 
+ * Last Updated: 2017-06-04 19:59 UTC 
  *
  * Copyright 2013 Kevin Fitzgerald + 2017 Michael Brooks
  *
@@ -20,7 +20,17 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ * 
+ * 
+ * Edit the var level_number to explore levels 1-4!
+ * 
  */
+var level_number = 4; //What level to start on (overridden by Sandbox if on. 1 to 4)
+
+var DEBUG = true; //Debug mode
+var level; //Where we'll store our level
+var sandbox = false; //Whether to build our debug environment instead of levels
+
 
 //Add in smart print declaration of values to Vector3
 THREE.Vector3.prototype.str = function(){
@@ -205,8 +215,8 @@ var level_contents = {
             "ends":[],
             "world_width":32,
             "world_depth":32,
-            //"start_position": new THREE.Vector3(40,50,12), //Where player starts
-            "start_position": new THREE.Vector3(-53, -15, 42), //tEST
+            "start_position": new THREE.Vector3(40,50,12), //Where player starts
+            //"start_position": new THREE.Vector3(-53, -15, 42), //tEST
             "start_orientation" : new THREE.Euler(0,0,-DEG45) //Face the cylinder
         }
         
@@ -395,12 +405,6 @@ $.merge(tubular_hell.ends, tubular_variable_configs[tubular_hell_mode].ends); //
 level_contents[3] = tubular_hell;
 
 
-
-
-var DEBUG = true; //Debug mode
-var level; //Where we'll store our level
-var level_number = 4; //What level to start on (overridden by Sandbox if on)
-var sandbox = false; //Whether to build our debug environment instead of levels
 
     // screen size
 var SCREEN_WIDTH = window.innerWidth,
@@ -730,20 +734,24 @@ function init() {
             $('#loading .error').show().html('<br/>Name must be 3-10 letters or numbers.')
         }
     }
-        
+    
     // Bind up the nickname screen when the dom is ready
     $(document).ready(function(){
         //In debug mode, skip this:
         if(DEBUG){
             set_nickname("test");
         }
-	
-	// Bind the form submit, so the player can hit ENTER on the nickname text box
+    
+        // Bind the form submit, so the player can hit ENTER on the nickname text box
         $('#loading form').bind('submit', function(e) {
             e.preventDefault();
             var nick = $.trim($('#nickname').val());
             set_nickname($(this));
         });
+        
+        if(level){
+            level.socket = socket; //Necessary to ensure the level knows its socket
+        }
         
     });
 
@@ -754,10 +762,9 @@ function init() {
     //
     // SCENE SETUP
     //
-
     // Scene has to be a Physijs Scene, not a THREE scene so physics work
     scene = new Physijs.Scene({ fixedTimeStep: 1 / 60 });
-    level = new SuperMega.Level(scene, 1, {"world_width":worldWidth, "world_depth":worldDepth}); //Scene now held in level too
+    level = new SuperMega.Level(scene, 1, {"world_width":worldWidth, "world_depth":worldDepth, "socket":socket}); //Scene now held in level too
     scene.loaded = false;
     level.loaded = false; //Holds off events and collision detection until loaded
 
