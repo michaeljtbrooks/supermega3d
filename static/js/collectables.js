@@ -3158,11 +3158,15 @@ SuperMega.Interactable = function (options){
         "translation_mode" : options.translation_mode || null,
         "magnitude" : options.magnitude || 0,
         "level" : options.level || null, //Can pass the level in for manipulating pickups
-        "preset" : options.preset || null //Can pass the scene in for manipulating pickups
+        "preset" : options.preset || null, //Can pass the scene in for manipulating pickups
+        "name" : options.name || "" //For addressing with switches etc
     };
     
     //Alias level
     this.level = ops.level; //Track level if passed in at start
+    
+    //Set name:
+    this.name = ops.name; //Also happens under the hood in THREE.js!
     
     //Apply presets
     if(ops.preset!=null){
@@ -3877,3 +3881,5 @@ SuperMega.TheEnd.prototype = Object.assign( Object.create(SuperMega.Interactable
         this.material.needsUpdate = true; //Ensures the object is re-rendered
     },
 });
+
+

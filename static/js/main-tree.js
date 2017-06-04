@@ -55,10 +55,17 @@ if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
 // ***** GLOBAL VARS ***************************************************************************************************
 // *********************************************************************************************************************
 
+var DEG15 = Math.PI/12;
 var DEG30 = Math.PI/6;
 var DEG45 = Math.PI/4;
 var DEG60 = Math.PI/3;
 var DEG90 = Math.PI/2;
+var DEG135 = DEG90+DEG45;
+var DEG180 = Math.PI;
+var DEG225 = Math.PI+DEG45;
+var DEG270 = Math.PI*3/2;
+var DEG315 = Math.PI+DEG45;
+var DEG360 = Math.PI*2;
 
 var level_contents = {
         1:{ //Our first level
@@ -128,35 +135,71 @@ var level_contents = {
                 {"width":160, "depth":160, "width_vertices":32, "depth_vertices":32, "multiplier":0.25, "subtractor":0}
             ],
             "platforms":[
-                {"size":[3,160,14], "position":[-80,0,-2], "colour":0x564510}, //Wall1
-                {"size":[3,160,14], "position":[80,0,-2], "colour":0x564510}, //Wall2
-                {"size":[160,3,14], "position":[0,-80,-2], "colour":0x564510}, //Wall3
-                {"size":[160,3,14], "position":[0,80,-2], "colour":0x564510}, //Wall3
-                {"mesh_shape":"cylinder", "size":[30,30,200], "colour":0xF0F0E0, "position":[0,0,92], "orientation":[DEG90,0,0]}, //Big F/O cylinder
-                {"mesh_shape":"cylinder", "size":[38,38,3], "position":[0,0,193], "orientation":[DEG90,0,0]},  //Big F/O cylinder topper
+                {"size":[3,160,14], "position":[-80,0,-2], "colour":0xE0B5A8}, //Wall1
+                {"size":[3,160,14], "position":[80,0,-2], "colour":0xE0B5A8}, //Wall2
+                {"size":[160,3,14], "position":[0,-80,-2], "colour":0xE0B5A8}, //Wall3
+                {"size":[160,3,14], "position":[0,80,-2], "colour":0xE0B5A8}, //Wall4
+                {"size":[3,160,14], "position":[-80,0,12], "colour":0xEBAED3}, //Wall1 top
+                {"size":[3,160,14], "position":[80,0,12], "colour":0xEBAED3}, //Wall2 top
+                {"size":[160,3,14], "position":[0,-80,12], "colour":0xEBAED3}, //Wall3 top
+                {"size":[160,3,14], "position":[0,80,12], "colour":0xEBAED3}, //Wall4 top
+                //Central tower
+                {"mesh_shape":"cylinder", "size":[30,30,150], "colour":0xF0F0E0, "position":[0,0,67], "orientation":[DEG90,0,0]}, //Big F/O cylinder
+                {"mesh_shape":"cylinder", "size":[38,38,3], "position":[0,0,148], "orientation":[DEG90,0,0]},  //Big F/O cylinder topper
                 //Ground orbiter cw
-                {"size":[16,16,4], "position":[0,0,-3], "orientation":[0,0,0], "translation":[1,1,0], "translation_mode":"orbiting", "magnitude":41}, //First moving platform
+                {"size":[16,16,4], "position":[0,0,-3], "orientation":[0,0,0], "translation":[1,1,0], "translation_mode":"orbiting", "magnitude":41, "colour": 0xAA8833}, //First moving platform
                 //Orbiter acw
-                {"size":[12,12,4], "position":[0,0,3], "orientation":[0,0,DEG45], "translation":[-1.2,-1.2,0], "translation_mode":"orbiting", "magnitude":38},
+                {"size":[12,12,4], "position":[0,0,3], "orientation":[0,0,DEG45], "translation":[-1.2,-1.2,0], "translation_mode":"orbiting", "magnitude":38, "colour": 0xAA8833},
                 //Solitary stable platform floor 2
                 {"size":[20,20,2], "position":[-50,50,10], "orientation":[0,0,DEG45]},
                 //Slope to floor 3
-                {"size":[8,20,2], "position":[-32,26,16], "orientation":[-DEG45/2,0,DEG45,"ZXY"]}
+                {"size":[8,20,2], "position":[-32,26,16], "orientation":[-DEG45/2,0,DEG45,"ZXY"]},
+                //Floor 3 spokes
+                {"size":[12,12,2], "position":[Math.sin(0)*35,Math.cos(0)*35,19], "orientation":[0,0,-0,"ZXY"]},
+                {"size":[12,12,2], "position":[Math.sin(DEG45)*35,Math.cos(DEG45)*35,19], "orientation":[0,0,-DEG45,"ZXY"]},
+                {"size":[12,12,2], "position":[Math.sin(DEG90)*35,Math.cos(DEG90)*35,19], "orientation":[0,0,-DEG90,"ZXY"]},
+                {"size":[12,12,2], "position":[Math.sin(DEG135)*35,Math.cos(DEG135)*35,19], "orientation":[0,0,-DEG135,"ZXY"]},
+                {"size":[12,12,2], "position":[Math.sin(DEG180)*35,Math.cos(DEG180)*35,19], "orientation":[0,0,-DEG180,"ZXY"]},
+                //Step up to floor 4
+                {"size":[10,24,2], "position":[Math.sin(DEG180+DEG15)*40,Math.cos(DEG180+DEG15)*40,25], "orientation":[0,0,-(DEG180+DEG15),"ZXY"]},
+                //Floor 4 - Bobbing platforms:
+                {"size":[8,10,2], "position":[-18.0,-72, 22], "translation":[0,0,15], "translation_mode":"reciprocating", "magnitude":15, "colour": 0xAA8833},
+                {"size":[8,10,2], "position":[-35.0,-72, 22], "translation":[0,0,10], "translation_mode":"reciprocating", "magnitude":15, "colour": 0xAA8833},
+                {"size":[10,15,2], "position":[-52.0,-69, 29], "translation":[0,15,5], "translation_mode":"reciprocating", "magnitude":30, "colour": 0xAA8833}, //Diagonal slider
+                //Floor 5 mini-tower breather with switch to activate shortcut lift
+                {"mesh_shape":"cylinder","size":[4,4,44],"position":[-52,-12,15],"colour":0xF0F0E0,  "orientation":[DEG90,0,0]}, //Shaft
+                {"mesh_shape":"cylinder","size":[14,14,2],"position":[-52,-12,38], "orientation":[DEG90,0,0]}, //Lid
+                //Floor 2 > Floor 5 shortcut lift
+                {"name":"two_to_five_shortcut_lift", "size":[8,8,2], "position":[-63,63,9], "orientation":[0,0,DEG45], "translation":[-4,-20,10], "translation_mode":"switched_reciprocating", "magnitude":80, "colour": 0xAA8833}, //Diagonal slider
+                
+                
+                
             ],
             "traps":[
-                //Spinning bar floor 3
-                {"size":[80,2,4], "position":[0,0,22], "angular_momentum":[0,0,DEG45], "rotation_mode":"continuous"}
+                //Anti-climb paint
+                {"size":[3,160,1], "position":[-80,0,19.5]}, //Wall1
+                {"size":[3,160,1], "position":[80,0,19.5]}, //Wall2
+                {"size":[160,3,1], "position":[0,-80,19.5]}, //Wall3
+                {"size":[160,3,1], "position":[0,80,19.5]}, //Wall4
+                //Spinning jump bar floor 3
+                {"size":[80,2,4], "position":[0,0,22], "angular_momentum":[0,0,DEG45], "rotation_mode":"continuous"},
+                //Floor 4 - fence between bobbing platforms 1 and 2
+                {"size":[2,12,4], "position":[-25.5, -72, 29]},
+               //Floor 4 - moving fence between bobbing platforms 2 and 3
+                {"size":[2,8,4], "position":[-43,-57,32],"translation_mode":"orbiting", "translation":[0,2,2], "magnitude":8},
             ],
             "noms":[
-                {"position":[0,0,5.5], "translation":[-1.2,-1.2,0], "translation_mode":"orbiting", "magnitude":35}, //Sits on first floor acw    
+                {"position":[0,0,5.5], "translation":[-1.2,-1.2,0], "translation_mode":"orbiting", "magnitude":35}, //Sits on first floor acw
+                {"position":[Math.sin(DEG180)*35,Math.cos(DEG180)*35,22]}, //On the last Floor 3 spoke
             ],
             "powerups":[
-                {"position":[-55,55,12]}
+                {"position":[-55,55,13]}
             ],
             "ends":[],
             "world_width":32,
             "world_depth":32,
             "start_position": new THREE.Vector3(40,50,12), //Where player starts
+            //"start_position": new THREE.Vector3(Math.sin(DEG180+DEG15)*40,Math.cos(DEG180+DEG15)*40,29), //tEST
             "start_orientation" : new THREE.Euler(0,0,-DEG45) //Face the cylinder
         }
         
