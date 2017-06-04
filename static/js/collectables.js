@@ -12,6 +12,18 @@
 
 var DEBUG = true;
 
+//Useful constants
+var DEG15 = Math.PI/12;
+var DEG30 = Math.PI/6;
+var DEG45 = Math.PI/4;
+var DEG60 = Math.PI/3;
+var DEG90 = Math.PI/2;
+var DEG135 = DEG90+DEG45;
+var DEG180 = Math.PI;
+var DEG225 = Math.PI+DEG45;
+var DEG270 = Math.PI*3/2;
+var DEG315 = Math.PI+DEG45;
+var DEG360 = Math.PI*2;
 
 //Sorting out the deepcopy issue:
 function clone(obj, arr, i ,j){
@@ -122,8 +134,8 @@ SuperMega.DEFAULT_COLOURS = {
     "trap" : 0x2222FF,
     "platform" : 0xF762A8,
     "powerup" : 0xFFF022,
-    "switch" : 0x444444,
-    "magic_switch" : 0xDDDDDD,
+    "switcher" : 0x444444, //Called "switcher" because "switch" is already a js keyword
+    "magic_switcher" : 0xDDDDDD,
     "the_end" : 0x8316FF,
     "nom" : 0x33EEFF,
 };
@@ -366,7 +378,9 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
     liquid_terrain: [], //Surface we can pass through (but balls cant)
     debris: [],    //Other items which may exist on the scene but won't be tested in our collision detection
     the_ends:[], //Easy way of tracking the ends
+    switchers:[], //Easy way of tracking the switchers
     terrain_and_collidables: [],  //Automated bin of both the collidables and the terrain, saves recalculating the list each animate loop
+    named_objects: {}, //Convenient way of collecting anything carrying a name for later reference to (e.g. in the case of switches)
     //The dict items
     lighting: {}, //The lights
     players: {}, //Players in the scene
@@ -545,6 +559,15 @@ SuperMega.Level.prototype._scene_action = function(action, obj, category_name, i
         }else if(action=="remove"){
             this.scene.remove(obj);
         }
+        
+        //And add to /remove from the named_objects global var:
+        if(obj.name){ //Only applies to objects with names:
+            if(action=="add"){
+                this.named_objects[obj.name] = obj;
+            } else if(action=="remove"){
+                delete this.named_objects[obj.name];
+            }
+        }
 };
 SuperMega.Level.prototype.add = function(obj,category_name,index_name){
         /**
@@ -573,6 +596,27 @@ SuperMega.Level.prototype.recompile_obstacles = function(){
     //Recalculate our combined collidables:
     this.terrain_and_collidables = $.merge($.merge([], this.terrain), this.collidables);
     return this.terrain_and_collidables;
+};
+SuperMega.Level.prototype.init_switchers = function(){
+    /**
+     * Turns on vulnerable switchers to ensure they respond to ball strikes
+     */
+    //Recalculate our combined collidables:
+    var self = this;
+    $.each(self.switchers, function(index,switcher){
+        if(switcher.ops.affected_by_balls){ //Restricted only to switches which are ball sensitive
+            switcher.on_collision(self, "ball_strike"); //Dirty way of passing in the level object down to the switcher!
+        }
+    });
+};
+SuperMega.Level.prototype.get_object = function(name){
+    /**
+     * Fetches an object by its name from level.named_objects
+     * @param name: <str> the object name you gave it e.g. "bouncing_platform_1"
+     * 
+     * @return: <SuperMega.Interactable> The object you asked for if it exists
+     */
+    return this.named_objects[name];
 };
 SuperMega.Level.prototype.build = function(data){
         /**
@@ -661,6 +705,7 @@ SuperMega.Level.prototype.build = function(data){
         data.powerups = data.powerups || [];
         data.noms = data.noms || [];
         data.debris = data.debris || [];
+        data.switchers = data.switchers || data.switches || [];
         data.ends = data.ends || data.end || [];
         
         //Store a deepcopy:
@@ -699,6 +744,11 @@ SuperMega.Level.prototype.build = function(data){
             self.add_nom(options);
         });
         
+        //Build Switchers
+        $.each(data.switchers, function(index,options){
+            self.add_switchers(options);
+        });
+        
         //Build Ends
         $.each(data.ends, function(index,options){
             self.add_end(options);
@@ -730,6 +780,7 @@ SuperMega.Level.prototype.build = function(data){
        
         //Recompile:
         this.recompile_obstacles();
+        this.init_switchers();
         
         //Fix start position and rotation:
         this.start_position = data.start_position || ZERO_VECTOR3;
@@ -1152,6 +1203,40 @@ SuperMega.Level.prototype.add_nom = function(options){
         var nom = new SuperMega.Nom(options); //It's rather easy when you've got a class!!
         this.add(nom, "interactables");
 };
+SuperMega.Level.prototype.add_switchers = function(options){
+    /**
+     * Creates a switch (which itself can move!!)
+     * Options dict:
+     * 
+     *         position: <[x,y,z]> or <THREE.Vector3>
+     *         initialy_on: <boolean> false (whether this switch is "on" to start with)
+     *         target: <SuperMega.Interactable> If this acts upon just one Interactable, you can input it here
+     *         targets: [] List of interactables the switch acts on (the targets)
+     *         regenerates: <boolean> Whether this regenerates or not
+     *         toggle_on: {} The properties set for ALL targets when switch turned on
+     *         toggle_off: {} The properties set for ALL targets when switch turned off
+     *         target_specific_toggle_on: {} The properties of the targets that get changed when switch is activated (value represent the states of those properties)
+     *                     e.g. {
+     *                          "bobbing_platform_1" : {"translation":"reciprocating",} //Would alter the platform's motion to a reciprocating motion
+     *                     }
+     *         target_specific_toggle_off: {} The properties of the targets that get changed when switch is deactivated
+     *         affected_by_balls: <boolean> whether the switch can be adjusted by a ball (default true), 
+     * @param orientation: <THREE.Vector3> The rotational orientation of the object.
+     * @param angular_momentum: <THREE.Vector3> the rotational movement of the object (Radians per second) 
+     * @param translation: <THREE.Vector3> the translational movement of the object (units per second)
+     * @param rotation_mode: <str> "oscillating" | "continuous"
+     * @param translation_mode: <str> "oscillating" | "continuous" | "orbiting"
+     * @param magnitude: <float> how long a path is (in units), or how wide (radius) an orbiting path
+     * @param size: <[array]> Array of sizes x,y,z to make the object
+     * @param color: <Hex colour> The colour you wish to set it as
+     * @param friction: <float> how much friction the platform should have
+     * @param restitution: <float> how stiff it should be on collisions
+     */
+    options.level = self;
+    var switcher = new SuperMega.Switcher(options);
+    this.add(switcher, "interactables");
+    this.switchers.push(switcher); //Keep easy track of this
+};
 SuperMega.Level.prototype.add_end = function(options){
         /**
          * Creates a power_up, which can be moving
@@ -1421,17 +1506,26 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
     debug_rays: {}
 });
 //Methods:
-SuperMega.Player.prototype.on_collision = function(callback){
+SuperMega.Player.prototype.on_collision = function(level, callback){
     /**
      * Adds a collision listener to the player which will call the callback function
      * with the arguments callback(other_object, relative_velocity, relative_rotation, contact_normal)
      * 
+     * @param level: <SuperMega.Level> The level in which our collision happened
      * @param callback: <Function> The function which will be called on collision
      * 
      */
     console.log("Collision event loaded");
     this.addEventListener( 'collision', function( other_object, relative_velocity, relative_rotation, contact_normal ) {
         console.log("Hit something: "+other_object.uuid);
+        
+        //Fire our callback!
+        try{
+            callback(other_object, relative_velocity, relative_rotation, contact_normal);
+        }catch(err){
+            console.log("Collision event callback error:");
+            console.log(err);
+        }
     });
 };
 SuperMega.Player.prototype.state = function(prop){
@@ -1442,10 +1536,9 @@ SuperMega.Player.prototype.state = function(prop){
      */
     prop = prop || null;
     if(prop){ //Return the requested property
-        return this.POWER_STATES[prop][this.power_state]
-    }
-    
-}
+        return this.POWER_STATES[prop][this.power_state];
+    }  
+};
 SuperMega.Player.prototype.build_rays = function(){
         /**
          * Creates the collision detection rays
@@ -3158,15 +3251,12 @@ SuperMega.Interactable = function (options){
         "translation_mode" : options.translation_mode || null,
         "magnitude" : options.magnitude || 0,
         "level" : options.level || null, //Can pass the level in for manipulating pickups
-        "preset" : options.preset || null, //Can pass the scene in for manipulating pickups
+        "preset" : options.preset || null, //Can pass the scene in for manipulating pickups 
         "name" : options.name || "" //For addressing with switches etc
     };
     
     //Alias level
     this.level = ops.level; //Track level if passed in at start
-    
-    //Set name:
-    this.name = ops.name; //Also happens under the hood in THREE.js!
     
     //Apply presets
     if(ops.preset!=null){
@@ -3206,7 +3296,7 @@ SuperMega.Interactable = function (options){
             throw Error("SuperMega.Interactables: Sorry, "+mesh_shape+" mesh shape requires you to supply the geometry yourself. Set 'geometry' in the options.");
         }
     }
-    if(ops.material==null){
+    if(ops.material==null){ //Default to invisible material
         ops.material = Physijs.createMaterial(
                                     new THREE.MeshPhongMaterial( {
                                         color: ops.color,
@@ -3224,7 +3314,8 @@ SuperMega.Interactable = function (options){
     //This is where we'll add the shape options:
     this.generate_shape_specific_properties(ops.mesh_shape, ops.geometry, ops.material, ops.mass);
     
-    
+    //Set name:
+    this.name = ops.name; //Also happens under the hood in THREE.js!
     
     //Set up physical location
     this.position.set(ops.position.x,ops.position.y,ops.position.z); //Since r85.2, position is read-only, so call position.set
@@ -3242,15 +3333,19 @@ SuperMega.Interactable = function (options){
         }
     }
     
-    //Set default properties:
+    //Set clock properties:
     this.active = true; //Whether you can interact this
-    this.state = false; //Can store whatever you want here. Will depend on the type of object
-    this.collectable = false; //Can store whatever you want here. Will depend on the type of object
-    
-    //Add any extra properties - this is for any items which are pickups
+    if(typeof this.ops.state === "undefined"){
+        this.state = false; //Tracks the state of this object. If not given, defaults to false
+    } else {
+        this.state = this.ops.state; //Set it to its starting state. This.state can be anything and can vary on the type of object
+    }
     this.refractory_period = options.refractory_period || 15.0; //The time in seconds to when this stops being refractory
     this.refractory_clock = this.refractory_period; //Clock watcher, must be >= this.refractory_period to be considered active
     this.regenerates = false; //Whether this regenerates after the refractory period or not
+    
+    //Other default properties
+    this.collectable = false; //Can store whatever you want here. Will depend on the type of object
     
     //Create movement watchers:
     this.amount_moved = new THREE.Vector3(0,0,0);
@@ -3408,7 +3503,13 @@ SuperMega.Interactable.prototype.animate = function(delta){
      */
     if(this.refractory_clock < this.refractory_period && this.regenerates && this.active){
         this.refractory_clock += delta; //Increment by delta
+        
+        //Reactivate the item when the refractory_clock exceeds the refractory period:
+        if(this.refractory_clock >= this.refractory_period){ //Unfade
+            this.material.opacity = this.ops.opacity || 1; //Make opaque again
+        } 
     }
+    
     
     //Fast abort for non-movers!
     if(this.ops.magnitude == 0 && this.ops.rotation_mode == null && this.ops.translation_mode == null){
@@ -3469,12 +3570,38 @@ SuperMega.Interactable.prototype.animate = function(delta){
     this.__dirtyPosition = true;
     this.__dirtyRotation = true;
 };
+SuperMega.Interactable.prototype.on_collision = function(level, callback){
+    /**
+     * Adds a collision listener to the object which will call the callback function
+     * with the arguments callback(other_object, relative_velocity, relative_rotation, contact_normal).
+     * This adds overhead every single .simulate() call, so don't activate this unless you really 
+     * need it!!
+     * 
+     * @param level: <SuperMega.Level> The level in which our collision happened
+     * @param callback: <Function> The function which will be called on collision
+     * 
+     */
+    console.log("Collision event loaded");
+    this.addEventListener( 'collision', function( other_object, relative_velocity, relative_rotation, contact_normal ) {
+        //Fire our callback if it's a legit function
+        try{
+            if(typeof callback == "function"){ //A function has been supplied.
+                callback(level, other_object, relative_velocity, relative_rotation, contact_normal);
+            } else if(typeof callback == "string"){ //Assume we're asking for a method on this
+                this[callback](level, other_object, relative_velocity, relative_rotation, contact_normal);
+            }
+        }catch(err){
+            console.log("Collision event callback error:");
+            console.log(err);
+        }
+    });
+};
 SuperMega.Interactable.prototype.resolve_vector = function(x_or_vector, y, z){
     /**
      * Turns the supplied arguments into a true vector3 for use 
      */
     return SuperMega.resolve_vector(x_or_vector, y, z);
-}
+};
 SuperMega.Interactable.prototype.orientate = function(x_or_vector, y, z, amount, order){
     /**
      * Changes the orientation of this object to what you specify
@@ -3883,3 +4010,179 @@ SuperMega.TheEnd.prototype = Object.assign( Object.create(SuperMega.Interactable
 });
 
 
+/**
+ * Switches!!
+ * Creates a switch = an object which if touched will alter the state of other things in the level 
+ * @param options {
+ *         position: <[x,y,z]> or <THREE.Vector3>
+ *         initialy_on: <boolean> false (whether this switch is "on" to start with)
+ *         target: <SuperMega.Interactable> If this acts upon just one Interactable, you can input it here
+ *         targets: [] List of interactables the switch acts on (the targets)
+ *         regenerates: <boolean> Whether this regenerates or not
+ *         toggle_on: {} The properties set for ALL targets when switch turned on
+ *         toggle_off: {} The properties set for ALL targets when switch turned off
+ *         target_specific_toggle_on: {} The properties of the targets that get changed when switch is activated (value represent the states of those properties)
+ *                     e.g. {
+ *                          "bobbing_platform_1" : {"translation":"reciprocating",} //Would alter the platform's motion to a reciprocating motion
+ *                     }
+ *         target_specific_toggle_off: {} The properties of the targets that get changed when switch is deactivated
+ *         affected_by_balls: <boolean> Whether this can be switched by balls or not, default = true
+ * }
+ * 
+ * NB: You can build a more original-like End (i.e. trapezium with a hole in it) by using cgs.js
+ * http://evanw.github.io/csg.js/
+ */
+SuperMega.Switcher = function(options){
+    //Sanitise inputs:
+    options = options || {};
+    options.geometry = new THREE.CylinderGeometry(0,1.7,2.0,8,1); //Cone 0 top, 1.7 bottom, 2.0 height, 8 radial segments
+    options.material = Physijs.createMaterial(
+        new THREE.MeshPhongMaterial( {
+            color: SuperMega.DEFAULT_COLOURS.switcher, //Cyan
+        }),
+        .8, // high friction
+        .4 // low restitution
+    );
+    options.refractory_period = options.refractory_period || 2.0; //Default 2 second
+    options.toggle_on = options.toggle_on || {}; //Toggle on
+    options.toggle_off = options.toggle_off || {}; //Toggle off 
+    options.target_specific_toggle_on = options.target_specific_toggle_on || {}; //Toggle on
+    options.target_specific_toggle_off = options.target_specific_toggle_off || {}; //Toggle off
+    if(typeof options.affected_by_balls == "undefined"){
+        options.affected_by_balls = true;
+    }
+    
+    //Switches gently spin on Z-axis unless told otherwise
+    options.rotation_mode = options.rotation_mode || "continuous";
+    options.angular_momentum = options.angular_momentum || [0,DEG90,0,"XYZ"]; //Angular rotation per second (we use y because we've turned it on its end!)
+    
+    //Create the thing:
+    SuperMega.Interactable.call( this, options ); //JS inheritance hack part 1
+    this.orientate(DEG90,0,0,"XYZ"); //Sits on its base by default
+    
+    //Set mandatory behaviours
+    this.collectable = false; //Cannot be collected!
+    if(typeof options.regenerates == "undefined"){ //Overrides the Interactables behaviour of false
+        this.regenerates = true;
+    }
+    if(this.state){ //Set from options in interactables. If we're active, flip!!
+        this.orientate(DEG270,0,0,"XYZ");
+    }
+    
+    //Switches have shadows
+    this.castShadow = true;
+    this.receiveShadow = false;
+    
+    //Set targets:
+    this.ops.targets = options.targets || [];
+    var first_target = options.target || null;
+    if(first_target){ //Add this into the top of the targets list:
+        this.ops.targets.unshift(first_target);
+    }
+    //Append our extra properties to ops (this.ops gets created in the super() call)
+    this.ops.toggle_on = options.toggle_on;
+    this.ops.toggle_off = options.toggle_off;
+    this.ops.target_specific_toggle_on = options.target_specific_toggle_on;
+    this.ops.target_specific_toggle_off = options.target_specific_toggle_off;
+    this.ops.affected_by_balls = options.affected_by_balls;
+    
+    //Debug
+    D(this);
+};
+SuperMega.Switcher.prototype = Object.assign( Object.create(SuperMega.Interactable.prototype),{
+    constructor: SuperMega.Switch
+});
+SuperMega.Switcher.prototype.collect = function(delta, player, level){
+    //Ensures we activate the switch on touching 
+    return this.touched(delta,player,level);
+};
+SuperMega.Switcher.prototype.touched = function(delta,player,level){
+    /**
+     * Do something when this switch is touched!!
+     * Iterates through all targets, and updates their properties accordingly
+     */
+    level = level || null;
+    
+    //Bail if the switch ain't active: (animate will return this to normal after the appropriae time)
+    if(this.refractory_clock < this.refractory_period || !this.active){
+        D("Switch inactive: rc("+this.refractory_clock+") < rp("+this.refractory_period+")");
+        return false;
+    }
+
+    //Flip the state:
+    D("Switch active: targets="+this.ops.targets.toString());
+    this.state = !this.state;
+
+    //Now deactivate the item:
+    this.refractory_clock = 0;
+    
+    //Fade until it's regenerated (forever if not regenerating)
+    if(this.regenerates){ //Fade
+        this.material.transparent = true;
+        this.material.opacity = 0.5;
+    }else{ //Pseudo-remove from level
+        this.material.transparent = true;
+        this.material.opacity = 0;
+        this.active=false;
+    }    
+    
+    //Apply its action to its targets (iterate through its list of targets)
+    var to_apply = this.ops.toggle_off;
+    var target_specific_to_apply = this.ops.target_specific_toggle_off;
+    if(this.state){ //If we're now active, apply the "on" behaviours
+        D("Turning on");
+        to_apply = this.ops.toggle_on;
+        target_specific_to_apply = this.ops.target_specific_toggle_on;
+        this.orientate(DEG270,0,0); //Upside down
+    } else {
+        D("Turning off");
+        this.orientate(DEG90,0,0); //Right way up
+    }
+    var self = this;
+    $.each(self.ops.targets, function(index,target_name){
+        //Check that such a named object exists
+        var target = level.get_object(target_name); //grabs it from the level
+        D("Switcher Looking for '"+target_name+"'");
+        D(target);
+        if(!target && target_name != "__all__"){ //Bail if no named target matches (can use the all operator
+            return true; //aka continue 
+        };
+        
+        //Apply the "all objects" self.target_on / self.targed_off
+        $.each(to_apply, function(key,value){
+            //Key is the target property, value is what we're setting it to:
+            if(typeof target.ops[key] != "function"){ //Ensure we don't overwrite a function!
+                D("BEFORE SWITCH: "+target_name+".ops."+key+"="+target.ops[key]);
+                target.ops[key] = value; //Possible future upgrade: allow calling method target.key() with value as argument
+                D("AFTER SWITCH: "+target_name+".ops."+key+"="+target.ops[key]);
+            }
+        });
+        
+        //Apply the object-specific properties
+        var spec_to_apply = target_specific_to_apply[target_name];
+        if(spec_to_apply){
+            $.each(spec_to_apply, function(key,value){
+                if(typeof target.ops[key] != "function"){
+                    target.ops[key] = value; //Possible future upgrade: allow calling method target.key() with value as argument
+                }
+            });
+        }
+    });
+    
+    //Tell everyone what the state is
+    return this.state;
+};
+SuperMega.Switcher.prototype.ball_strike = function(level, other_object, relative_velocity, relative_rotation, contact_normal){
+    /**
+     * Detects when an object has hit it.  This is set up by Level.init_switchers()
+     * NB: there is no guarantee that the striking object is a ball 
+     * 
+     */
+    console.log("Something touched the switch!");
+    var self = this;
+    //Check this is indeed a ball (should have a supermega_ball_id)
+    if(level.balls[other_object.supermega_ball_id]){
+        //Yep, it's a ball. Flip the switch!!
+        return self.touched(0.01, level.player, level); //No delta in this one!
+    }
+};

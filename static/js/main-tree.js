@@ -135,14 +135,14 @@ var level_contents = {
                 {"width":160, "depth":160, "width_vertices":32, "depth_vertices":32, "multiplier":0.25, "subtractor":0}
             ],
             "platforms":[
-                {"size":[3,160,14], "position":[-80,0,-2], "colour":0xE0B5A8}, //Wall1
-                {"size":[3,160,14], "position":[80,0,-2], "colour":0xE0B5A8}, //Wall2
-                {"size":[160,3,14], "position":[0,-80,-2], "colour":0xE0B5A8}, //Wall3
-                {"size":[160,3,14], "position":[0,80,-2], "colour":0xE0B5A8}, //Wall4
-                {"size":[3,160,14], "position":[-80,0,12], "colour":0xEBAED3}, //Wall1 top
-                {"size":[3,160,14], "position":[80,0,12], "colour":0xEBAED3}, //Wall2 top
-                {"size":[160,3,14], "position":[0,-80,12], "colour":0xEBAED3}, //Wall3 top
-                {"size":[160,3,14], "position":[0,80,12], "colour":0xEBAED3}, //Wall4 top
+                {"size":[3,160,14], "position":[-80,0,-2], "colour":0xE0B5A8, "transparent":true, "opacity":0.4}, //Wall1
+                {"size":[3,160,14], "position":[80,0,-2], "colour":0xE0B5A8, "transparent":true, "opacity":0.4}, //Wall2
+                {"size":[160,3,14], "position":[0,-80,-2], "colour":0xE0B5A8, "transparent":true, "opacity":0.4}, //Wall3
+                {"size":[160,3,14], "position":[0,80,-2], "colour":0xE0B5A8, "transparent":true, "opacity":0.4}, //Wall4
+                {"size":[3,160,14], "position":[-80,0,12], "colour":0xEBAED3, "transparent":true, "opacity":0.4}, //Wall1 top
+                {"size":[3,160,14], "position":[80,0,12], "colour":0xEBAED3, "transparent":true, "opacity":0.4}, //Wall2 top
+                {"size":[160,3,14], "position":[0,-80,12], "colour":0xEBAED3, "transparent":true, "opacity":0.4}, //Wall3 top
+                {"size":[160,3,14], "position":[0,80,12], "colour":0xEBAED3, "transparent":true, "opacity":0.4}, //Wall4 top
                 //Central tower
                 {"mesh_shape":"cylinder", "size":[30,30,150], "colour":0xF0F0E0, "position":[0,0,67], "orientation":[DEG90,0,0]}, //Big F/O cylinder
                 {"mesh_shape":"cylinder", "size":[38,38,3], "position":[0,0,148], "orientation":[DEG90,0,0]},  //Big F/O cylinder topper
@@ -170,7 +170,7 @@ var level_contents = {
                 {"mesh_shape":"cylinder","size":[4,4,44],"position":[-52,-12,15],"colour":0xF0F0E0,  "orientation":[DEG90,0,0]}, //Shaft
                 {"mesh_shape":"cylinder","size":[14,14,2],"position":[-52,-12,38], "orientation":[DEG90,0,0]}, //Lid
                 //Floor 2 > Floor 5 shortcut lift
-                {"name":"two_to_five_shortcut_lift", "size":[8,8,2], "position":[-63,63,9], "orientation":[0,0,DEG45], "translation":[-4,-20,10], "translation_mode":"switched_reciprocating", "magnitude":80, "colour": 0xAA8833}, //Diagonal slider
+                {"name":"two_to_five_shortcut_lift", "size":[8,8,2], "position":[-63,63,9], "orientation":[0,0,DEG45], "translation":[-4,-20,10], "translation_mode":"switched_off_reciprocating", "magnitude":80, "colour": 0xAA8833}, //Diagonal slider
                 
                 
                 
@@ -195,11 +195,18 @@ var level_contents = {
             "powerups":[
                 {"position":[-55,55,13]}
             ],
+            "switchers":[ //Switches are known as "switcheRs". They need a target and a toggle_on and toggle_off action
+                { //Floor-5 mini tower, activates the shortcut lift
+                    "position":[-58,-12,42], "target":"two_to_five_shortcut_lift",
+                    "toggle_on": {"translation_mode":"reciprocating"},
+                    "toggle_off": {"translation_mode":"switched_off_reciprocating"},
+                },
+            ],
             "ends":[],
             "world_width":32,
             "world_depth":32,
-            "start_position": new THREE.Vector3(40,50,12), //Where player starts
-            //"start_position": new THREE.Vector3(Math.sin(DEG180+DEG15)*40,Math.cos(DEG180+DEG15)*40,29), //tEST
+            //"start_position": new THREE.Vector3(40,50,12), //Where player starts
+            "start_position": new THREE.Vector3(-53, -15, 42), //tEST
             "start_orientation" : new THREE.Euler(0,0,-DEG45) //Face the cylinder
         }
         
@@ -1523,7 +1530,7 @@ function createScene(data) {
     // Add the player to the scene
     level.add( player, "players", player.player_id ); //Player finally added to scene here
     level.player = player; //Special way to keep track of the local player!
-    player.on_collision(function(){}); //What happens when the player collides with stuff
+    player.on_collision(level, function(){}); //What happens when the player collides with stuff
 
     // Init the player's sprite
     updatePlayerSprite(playerId);
