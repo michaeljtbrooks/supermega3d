@@ -65,6 +65,8 @@ if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
 // ***** GLOBAL VARS ***************************************************************************************************
 // *********************************************************************************************************************
 
+var DEG5 = Math.PI/36;
+var DEG10 = Math.PI/18;
 var DEG15 = Math.PI/12;
 var DEG30 = Math.PI/6;
 var DEG45 = Math.PI/4;
@@ -177,12 +179,24 @@ var level_contents = {
                 {"size":[8,10,2], "position":[-35.0,-72, 22], "translation":[0,0,10], "translation_mode":"reciprocating", "magnitude":15, "colour": 0xAA8833},
                 {"size":[10,15,2], "position":[-52.0,-69, 29], "translation":[0,15,5], "translation_mode":"reciprocating", "magnitude":30, "colour": 0xAA8833}, //Diagonal slider
                 //Floor 5 mini-tower breather with switch to activate shortcut lift
-                {"mesh_shape":"cylinder","size":[4,4,44],"position":[-52,-12,15],"colour":0xF0F0E0,  "orientation":[DEG90,0,0]}, //Shaft
+                {"mesh_shape":"cylinder","size":[4,4,45],"position":[-52,-12,15],"colour":0xF0F0E0,  "orientation":[DEG90,0,0]}, //Shaft
                 {"mesh_shape":"cylinder","size":[14,14,2],"position":[-52,-12,38], "orientation":[DEG90,0,0]}, //Lid
+                {"mesh_shape":"cylinder","size":[6,6,2],"position":[-52,-12,31], "orientation":[DEG90,0,0]}, //Hidden Lid
+                {"size":[16,3,2], "position":[-45,-12,31]}, //Platform to hidden power up platform underneath the smaller tower lid
                 //Floor 2 > Floor 5 shortcut lift
                 {"name":"two_to_five_shortcut_lift", "size":[8,8,2], "position":[-63,63,9], "orientation":[0,0,DEG45], "translation":[-4,-20,10], "translation_mode":"switched_off_reciprocating", "magnitude":80, "colour": 0xAA8833}, //Diagonal slider
-                
-                
+                //Floor 5 bracket-fungus like stairs to floor 6
+                {"mesh_shape":"cylinder","segments":[10,1],"size":[5,5,2],"position":[-26,-12,37], "orientation":[DEG90,0,0]}, //Bracket 1
+                {"mesh_shape":"cylinder","segments":[10,1],"size":[5,5,2],"position":[Math.sin(DEG225-DEG5)*28.5,Math.cos(DEG225-DEG5)*28.5,41], "orientation":[DEG90,0,0]}, //Bracket 2
+                {"mesh_shape":"cylinder","segments":[10,1],"size":[5,5,2],"position":[Math.sin(DEG180+DEG10)*31,Math.cos(DEG180+DEG10)*31,45], "orientation":[DEG90,0,0], "translation":[2,3.5,0], "translation_mode":"reciprocating", "magnitude":8, "colour": 0xAA8833}, //Bracket 3
+                {"mesh_shape":"cylinder","segments":[10,1],"size":[5,5,2],"position":[Math.sin(DEG225-DEG10)*28.5,Math.cos(DEG225-DEG10)*28.5,53], "orientation":[DEG90,0,0]}, //Bracket 3a (hidden one with power up)
+                {"mesh_shape":"cylinder","segments":[10,1],"size":[5,5,2],"position":[Math.sin(DEG225+DEG10)*27,Math.cos(DEG225+DEG10)*27,61], "orientation":[DEG90,0,0], "colour": 0xF0F0E0}, //Bracket 3b (hidden WHITE one)
+                {"mesh_shape":"cylinder","segments":[10,1],"size":[5,5,2],"position":[Math.sin(DEG180-DEG10)*28.5,Math.cos(DEG180-DEG10)*28.5,49], "orientation":[DEG90,0,0]}, //Bracket 4
+                //Floor 6 
+                {"size":[16,8,2], "position":[31,-31,50]}, //Rest 
+                {"size":[2,48,2], "position":[40,-11,50], "preset":"ice_platform"}, //Ice bar 1
+                {"size":[12,12,2], "position":[40,33,51], "preset":"ice_platform"}, //Ice rest between bars
+                {"size":[48,2,2], "position":[20,39,57], "preset":"ice_platform", "orientation":[0,DEG15,0]}, //Ice bar 2, ramping up
                 
             ],
             "traps":[
@@ -195,15 +209,25 @@ var level_contents = {
                 {"size":[80,2,4], "position":[0,0,22], "angular_momentum":[0,0,DEG45], "rotation_mode":"continuous"},
                 //Floor 4 - fence between bobbing platforms 1 and 2
                 {"size":[2,12,4], "position":[-25.5, -72, 29]},
-               //Floor 4 - moving fence between bobbing platforms 2 and 3
+                //Floor 4 - moving fence between bobbing platforms 2 and 3
                 {"size":[2,8,4], "position":[-43,-57,32],"translation_mode":"orbiting", "translation":[0,2,2], "magnitude":8},
+                //Floor 6 ice bar 1: orbiting around middle
+                {"name":"trap_ice_bar_slider1", "size":[2,2,6],"position":[38,-19,54],"translation_mode":"reciprocating","translation":[6,0,0], "magnitude":6},
+                {"name":"trap_ice_bar_orbiter", "size":[5,2,5],"position":[40,-11,50],"translation_mode":"orbiting","translation":[2,0,2], "magnitude":5},
+                {"name":"trap_ice_bar_slider2", "size":[2,2,6],"position":[43,5,54],"translation_mode":"reciprocating","translation":[-6,0,0], "magnitude":6},
+                //Barrel rolling down ice bar 2:
+                {"name":"trap_ice_bar2_barrel", "mesh_type":"cylinder", "size":[1,1,3],"position":[-3,39,65],"translation_mode":"reciprocating","translation":[15.455,0,-4.141], "magnitude":38},
             ],
             "noms":[
                 {"position":[0,0,5.5], "translation":[-1.2,-1.2,0], "translation_mode":"orbiting", "magnitude":35}, //Sits on first floor acw
                 {"position":[Math.sin(DEG180)*35,Math.cos(DEG180)*35,22]}, //On the last Floor 3 spoke
+                {"position":[-39,-12,32.5]}, //Sitting on the hidden bar under the small tower
+                {"position":[26,-31,52.5]}, //Sitting on the hidden bar under the small tower
             ],
             "powerups":[
-                {"position":[-55,55,13]}
+                {"position":[-55,55,13]}, //On the static breather platform floor 2
+                {"position":[-57.5,-12,34]}, //Hidden on ledge under smaller tower
+                {"position":[Math.sin(DEG225-DEG10)*31.5,Math.cos(DEG225-DEG10)*31.5,55.5]}, //Hidden on ledge under smaller tower
             ],
             "switchers":[ //Switches are known as "switcheRs". They need a target and a toggle_on and toggle_off action
                 { //Floor-5 mini tower, activates the shortcut lift
@@ -211,12 +235,21 @@ var level_contents = {
                     "toggle_on": {"translation_mode":"reciprocating"},
                     "toggle_off": {"translation_mode":"switched_off_reciprocating"},
                 },
+                { //Floor-6 rest ice platform after the bar
+                    "position":[44,36,53.5], "targets": ["trap_ice_bar_slider1", "trap_ice_bar_slider2", "trap_ice_bar_orbiter"],
+                    "toggle_on": {"translation_mode":"switched_off"}, //Applies to all
+                    "target_specific_toggle_off": { //The three platforms have different translation modes when turned back on
+                        "trap_ice_bar_slider1": {"translation_mode":"reciprocating"},
+                        "trap_ice_bar_orbiter": {"translation_mode":"orbiting"},
+                        "trap_ice_bar_slider2": {"translation_mode":"reciprocating"},
+                     },
+                },
             ],
             "ends":[],
             "world_width":32,
             "world_depth":32,
             "start_position": new THREE.Vector3(40,50,12), //Where player starts
-            //"start_position": new THREE.Vector3(-53, -15, 42), //tEST
+            //"start_position": new THREE.Vector3(44,33,55), //tEST
             "start_orientation" : new THREE.Euler(0,0,-DEG45) //Face the cylinder
         }
         
