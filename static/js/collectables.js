@@ -85,7 +85,7 @@ Object.deepclone = function(){
 //Expanding on THREEjs:
 //Add in smart print declaration of values to Vector3
 THREE.Vector3.prototype.str = function(){
-    return "x:"+this.x.toFixed(3)+", y:"+this.y.toFixed(3)+", x:"+this.z.toFixed(3);
+    return "x:"+this.x.toFixed(3)+", y:"+this.y.toFixed(3)+", z:"+this.z.toFixed(3);
 };
 
 /**
@@ -1442,7 +1442,7 @@ SuperMega.Player = function (options, scene, hud){
     options = options || {};
     options.local = options.local || true; //If this is the local player or not
     options.color = options.color || options.colour || this.POWER_COLOURS[0];
-    options.mass = options.mass || 0;
+    options.mass = options.mass || 0; //Physijs doesn't work without mass
     options.player_id = options.player_id || Math.round(Math.random()*99999); //Give random ID
     options.nickname = options.nickname || "SuperMega #"+options.player_id;
     
@@ -1476,6 +1476,9 @@ SuperMega.Player = function (options, scene, hud){
     
     //Initialise a fresh life:
     this.reset(scene, hud);
+    
+    //Bin gravity
+    
     
 };
 SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.prototype), {
@@ -1746,7 +1749,7 @@ SuperMega.Player.prototype.drawRay = function(level, id, origin, direction, dist
     }
 };
    
-SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move, axis, target_objects, input, is_terrain){
+SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move, axis, target_objects, input, is_terrain, delta){
     /**
      * Returns the collisions in the direction given, for the axis given, assuming the player's position
      * 
@@ -1759,7 +1762,9 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
      *     "x_minus"|"y_minus"|"z_minus" Movements in the negative axis direction 
      *     If the proposed movement is opposite to the axis direction, then the output movement will be zero 
      * @param included_objects: [<array>collidables,debris] the list of items to test against
-     * @keyword input: {} A dict from a previous run of this function
+     * @param input: {} A dict from a previous run of this function
+     * @param is_terrain: <boolean> Should the higher-efficiency lower accuracy terrain distance finding method be used?
+     * @param delta: <float> The frame time in ms (now necessary to support punting)
      * 
      * 
      * @return: { //Collision summary:
@@ -1848,7 +1853,7 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
     
     //Create rays and log collisions
     $.each(ray_points, function(group_name, ray_group){
-        var ray_length_multiplier = 10;
+        var ray_length_multiplier = 4;
         if(is_terrain){ //Raycast testing versus a heightmap is proper slow, so bin rays we don't care about
             if(group_name=="top" || group_name=="centre"){ //Bin top and central rays
                 return true; //This is a continue
@@ -1960,6 +1965,52 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                 //TODO: Check knock-on head-hitting here.
             }
         }
+        
+        //PUNTING! Has an object encroached into the player's space such that we'll get a collision imminently?
+        if(min_top_collisions!==null || min_centre_collisions!==null){ //Yes this has the velocity!
+            //First we need to deduce which ray struck this object first
+            var min_coll = null;
+            //Check if it was the top rays
+            if(min_top_collisions!==null && (min_top_collisions < min_centre_collisions || min_centre_collisions===null)){
+                //min_top_collisions is the dominant collision here
+                var min_coll_distance = min_top_collisions;
+                var min_coll_index = output.collision_distances["top"].indexOf(min_top_collisions); //Which ray caused the collision event
+                var min_coll = output.collisions["top"][min_coll_index]; //What collision event this is
+            }
+            //Now check the centre rays for punting
+            if(min_centre_collisions!==null && (min_centre_collisions < min_top_collisions || min_top_collisions===null)){
+                //min_top_collisions is the dominant collision here
+                var min_coll_distance = min_centre_collisions;
+                var min_coll_index = output.collision_distances["centre"].indexOf(min_top_collisions); //Which ray caused the collision event
+                var min_coll = output.collisions["centre"][min_coll_index]; //What collision event this is
+            }
+            
+            //Only bother to process this if there is a registered collision.
+            if(min_coll){
+                var min_coll_obj = min_coll.object; //What object you collided with
+                //Will may collide... Is the velocity of the object in that plane + player velocity greater than the ray dist?
+                if(min_coll_obj){
+                    if(min_coll_obj.velocity){ //Only process if this has a velocity
+                        var collider_velocity = thisplayer.get_player_centric_velocity(min_coll_obj); //Turns platform velocity into player's velocity
+                        //We must now add in the rotational component of this object:
+                        //TODO
+                        //Calculate the impact distance necessary
+                        var impact_distance = (thisplayer.velocity[axis_dimension] + collider_velocity[axis_dimension])*delta;
+                        if(impact_distance > min_coll_distance){ //This is a collision worthy of punting!
+                            output.axis_move = collider_velocity[axis_dimension]*delta; //This is the vector displacement to punt the player
+                            if(direction_component<0){ //It's gonna get flipped from a scalar to a vector so lets flip it first, so the flip back corrects it!!
+                                output.axis_move = output.axis_move * -1; 
+                            }
+                            //Transfer momentum to player
+                            thisplayer.velocity[axis_dimension] = thisplayer.velocity[axis_dimension] + collider_velocity[axis_dimension]; 
+                            D("PUNT! SM:"+thisplayer.velocity.str()+" Pltf:"+collider_velocity.str());
+                            D(min_coll_obj);
+                        }
+                    }
+               }
+            }
+        }
+        
         //Now detect contact with a trap (we'll pick the nearest obj only
         if(min_top_collisions < relative_to_move || min_centre_collisions < relative_to_move || min_bottom_collisions < relative_to_move){
             if(typeof output.min_collision.object !== "undefined"){
@@ -2061,8 +2112,8 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
         var axis_dimension = axis.charAt(0);
         var vector_to_move = (player.velocity[axis_dimension] + player.standing_on_velocity[axis_dimension]) * delta;
         //Put them into our collision function. Will only return an output movement in the current axis IF movement congruent with direction of axis
-        verdict[axis] = player.get_directional_collisions(vector_to_move, axis, level.collidables); //to_move, axis_name, target_objects
-        verdict[axis] = player.get_directional_collisions(vector_to_move, axis, level.terrain, verdict[axis], true); //More efficient check vs terrain (uses get_z function)
+        verdict[axis] = player.get_directional_collisions(vector_to_move, axis, level.collidables, null, false, delta); //to_move, axis_name, target_objects
+        verdict[axis] = player.get_directional_collisions(vector_to_move, axis, level.terrain, verdict[axis], true, delta); //More efficient check vs terrain (uses get_z function)
         
         //Check for collisions in the direction of movement 
         if(axis_dimension=="z"){
@@ -2233,7 +2284,7 @@ SuperMega.Player.prototype.reset = function(options, scene, hud){
         this.visible = true;
         this.__dirtyPosition = true;
         this.__dirtyRotation = true;
-}
+};
 SuperMega.Player.prototype.rotateVelocity = function(z_rotation_speed){
         /**
          * Adjusts the player's velocity for conservation of momentum if player rotates while moving (most noticable on ice sliding)
@@ -2245,7 +2296,7 @@ SuperMega.Player.prototype.rotateVelocity = function(z_rotation_speed){
         this.velocity.x = old_vel.x * Math.cos(z_rotation_speed) + old_vel.y * Math.sin(z_rotation_speed); //Rotational matrix. 
         this.velocity.y = old_vel.y * Math.cos(z_rotation_speed) + -old_vel.x * Math.sin(z_rotation_speed); //For rotational matrices we use -(sin A)  on the second axis
         this.velocity.z = old_vel.z; //Yep, it's simply (0,0,1) for that rotational matrix!
-}
+};
 SuperMega.Player.prototype.get_player_centric_velocity = function(entity){
     /**
      * Takes a platform or other SuperMega entity, converts its world-velocity into a player-centric
@@ -2272,7 +2323,7 @@ SuperMega.Player.prototype.get_player_centric_velocity = function(entity){
     }
     
     return plat_vel;
-}
+};
 SuperMega.Player.prototype.adjustStandingOnVelocity = function (platformObj){
         /**
          * Adjusts the player's base velocity to the platform you are standing on
@@ -2285,7 +2336,7 @@ SuperMega.Player.prototype.adjustStandingOnVelocity = function (platformObj){
     var plat_vel = this.get_player_centric_velocity(platformObj);
     this.standing_on_velocity = plat_vel;
     return plat_vel;
-}
+};
 SuperMega.Player.prototype.detectCollision = function(otherObjs){
         /**
          * Internal collision detection, uses rays which pass from object centre to vertices. Useful for "after the fact" collision detection
@@ -2335,8 +2386,8 @@ SuperMega.Player.prototype.detectCollision = function(otherObjs){
             };
         }
         return false;
-}
-SuperMega.Player.prototype.detectCollisions = function(otherObjs){return this.detectCollision(otherObjs);} //ALIAS
+};
+SuperMega.Player.prototype.detectCollisions = function(otherObjs){return this.detectCollision(otherObjs);}; //ALIAS
 SuperMega.Player.prototype.zCollisionPrediction = function(otherObjs){
         /**
          * Detects when you'll collide with something if jumping or falling, so that we can arrest the Z movement by the specified amount
@@ -2449,7 +2500,7 @@ SuperMega.Player.prototype.zCollisionPrediction = function(otherObjs){
             "standing_on_ids" : standing_on_ids,
             "hit_touchable" : hit_touchable
         };
-}
+};
 SuperMega.Player.prototype.quickCollisionPrediction = function(otherObjs, excludedObjsIds, delta){
         /**
          * Detects collisions that are about to happen in the x and y direction.
@@ -2536,7 +2587,7 @@ SuperMega.Player.prototype.quickCollisionPrediction = function(otherObjs, exclud
         }
         
         return collisions;
-}
+};
 SuperMega.Player.prototype.lastMovementCausesCollision = function(x,y,z,objs){
         /**
          * Checks that the last movement is ok, or has cause a collision / made a collision worse
@@ -2570,7 +2621,7 @@ SuperMega.Player.prototype.lastMovementCausesCollision = function(x,y,z,objs){
             }
         }
         return false; //Otherwise, the movement will not make things worse
-}
+};
 SuperMega.Player.prototype.intersects_terrain = function(terrain_objs){
         /**
          * Determines if the player is intersecting the terrain, if
@@ -2599,7 +2650,7 @@ SuperMega.Player.prototype.intersects_terrain = function(terrain_objs){
             return intersects[0].point.z; //Return the Z coordinate of intersect
         }
         return null;
-}
+};
 SuperMega.Player.prototype.adjust_to_stand_on_terrain = function(terrain_objs){
         /**
          * Sticks the player to the terrain if they are just about standing on it.
@@ -2633,7 +2684,7 @@ SuperMega.Player.prototype.adjust_to_stand_on_terrain = function(terrain_objs){
         }
         
         return this; //For chaining        
-}
+};
 SuperMega.Player.prototype.move_according_to_velocity = function(delta, level){
         /**
          * Moves this player according to their internal velocities
@@ -2858,7 +2909,7 @@ SuperMega.Player.prototype.move_according_to_velocity = function(delta, level){
         
         //Return the friction so the rest of our engine can use it.
         return mu;
-}
+};
 SuperMega.Player.prototype.update_debug_stats = function(x_collide, y_collide, z_collide){
     //Debug stats:
     var collisiondata = "Clip X:"+x_collide+", Y:"+y_collide+", Z:"+z_collide+""
@@ -2866,7 +2917,7 @@ SuperMega.Player.prototype.update_debug_stats = function(x_collide, y_collide, z
     var playerpos = "Player pos: "+this.position.x.toFixed(2)+","+this.position.y.toFixed(2)+","+this.position.z.toFixed(2);
     var playervel = "Player vel: "+this.velocity.x.toFixed(2)+","+this.velocity.y.toFixed(2)+","+this.velocity.z.toFixed(2);
     $('#debug-stats').html(collisiondata+"<br/>"+playerrot+"<br/><br/>"+playerpos+"<br/>"+playervel+"<br/>µ:"+this.mu+", PlatformVel: "+this.standing_on_velocity.x+","+this.standing_on_velocity.y+","+this.standing_on_velocity.z);
-}
+};
 SuperMega.Player.prototype.make_sprite = function(options){
         /**
          * Creates the "sprite" = Player's nameplate and hitpoint bar
@@ -2950,7 +3001,7 @@ SuperMega.Player.prototype.make_sprite = function(options){
             sprite.scale.set( 10, 10, 1 );
             this.sprite = sprite; //Store in object
             return sprite;
-}
+};
 SuperMega.Player.prototype.update_sprite = function(){
         /**
          * Updates the player's name and hitpoint bar (called the "sprite")
@@ -2966,7 +3017,7 @@ SuperMega.Player.prototype.update_sprite = function(){
         this.sprite.position.set(0, 0, 2); // Offset the sprite above the player
         this.add( this.sprite );  // Add the sprite to the player object
         return this.sprite;
-}
+};
 SuperMega.Player.prototype.delete_balls = function(scene, hud, options) {
         /**
          * Deletes all of the given player's balls from the scene
@@ -3005,7 +3056,7 @@ SuperMega.Player.prototype.delete_balls = function(scene, hud, options) {
 
         // Update the ball counter HUD cuz the player count might have changed
         hud.currentBallCount.text(this.maxBallCount - this.currentBallCount);
-}
+};
 SuperMega.Player.prototype.set_power = function(pow){
         /**
          * Sets the player's power level to pow
@@ -3033,8 +3084,8 @@ SuperMega.Player.prototype.set_power = function(pow){
         this.hud.maxBallCount.text(this.maxBallCount);
         
         return this.power_state;
-}
-SuperMega.Player.prototype.setPower = function(pow){return this.set_power(pow);} //ALIAS
+};
+SuperMega.Player.prototype.setPower = function(pow){return this.set_power(pow);}; //ALIAS
 SuperMega.Player.prototype.power_up = function(increment){ 
         /**
          * Increases the player's full power state by n
@@ -3050,7 +3101,7 @@ SuperMega.Player.prototype.power_up = function(increment){
             this.currentBallCount = 0;
         }
         return outcome;
-}
+};
 SuperMega.Player.prototype.respawn = function(level, position){
         /*
          * Respawns the player at the given position:
@@ -3077,7 +3128,7 @@ SuperMega.Player.prototype.respawn = function(level, position){
     	}
     	this.position.set(start_position.x, start_position.y, start_position.z);
     	this.rotation.setFromVector3(level.start_orientation || ZERO_EULER);
-}
+};
 SuperMega.Player.prototype.injure = function(damage){
         /**
         * Injures the player, if player loses all hit points, drops down a power level
@@ -3105,7 +3156,7 @@ SuperMega.Player.prototype.injure = function(damage){
         }
         // Update the remote player's sprite for the HP changes
         this.update_sprite();
-}
+};
 SuperMega.Player.prototype.heal = function(life){
         /**
          * Boosts the player's health by the life amount
@@ -3118,7 +3169,7 @@ SuperMega.Player.prototype.heal = function(life){
         }
         //Update the remote player's sprite for the HP changes
         this.update_sprite();
-}
+};
 SuperMega.Player.prototype.get_nom = function(noms_collected){
         /**
          * Increases nom score:
@@ -3127,7 +3178,7 @@ SuperMega.Player.prototype.get_nom = function(noms_collected){
         noms_collected = noms_collected || 1;
         this.noms += 1;
         this.hud.nomCount.text(this.noms);
-}
+};
 SuperMega.Player.prototype.throw_ball = function(socket, level){
     /**
      * When player throws a ball
@@ -3196,7 +3247,7 @@ SuperMega.Player.prototype.throw_ball = function(socket, level){
             this.player_id,
             player.material.color,
             eventData.ballId);
-}
+};
 Object.defineProperty(SuperMega.Player.prototype, 'userData', {
     /**
      * Allows us to fall back to the old userData property
@@ -3529,6 +3580,7 @@ SuperMega.Interactable.prototype.animate = function(delta){
      * Animates the object if applicable
      * @param delta: Time since last frame
      */
+    
     if(this.refractory_clock < this.refractory_period && this.regenerates && this.active){
         this.refractory_clock += delta; //Increment by delta
         
@@ -3547,10 +3599,18 @@ SuperMega.Interactable.prototype.animate = function(delta){
     //Now deal with motion
         //Save current position:
     var pos_before = this.position.clone();
+    
     //Angular_momentum applies to rotation on axis
-    this.rotateX(this.ops.angular_momentum.x * delta);
-    this.rotateY(this.ops.angular_momentum.y * delta);
-    this.rotateZ(this.ops.angular_momentum.z * delta);
+    if(this.ops.rotation_mode == "continuous" || this.ops.rotation_mode == "oscillating"){
+        this.rotateX(this.ops.angular_momentum.x * delta);
+        this.rotateY(this.ops.angular_momentum.y * delta);
+        this.rotateZ(this.ops.angular_momentum.z * delta);
+        //Tell PhysiJS that we're rotating, this allows us to pull on the PhysiJS methods for calculating stuff 
+        this.setAngularVelocity(this.ops.angular_momentum);
+    } else {
+       //Tell PhysiJS that we're not rotating.
+        this.setAngularVelocity(ZERO_EULER);
+    }
     
     //Translation along path
     var tx = this.ops.translation.x*delta;
@@ -3593,10 +3653,26 @@ SuperMega.Interactable.prototype.animate = function(delta){
     this.velocity.x = (this.position.x - pos_before.x)/delta;
     this.velocity.y = (this.position.y - pos_before.y)/delta;
     this.velocity.z = (this.position.z - pos_before.z)/delta;
+    //Tell Physijs about our linear velocity
+    this.setLinearVelocity(this.velocity);
     
-    //Update position for physijs;
+    //Update position for physijs, this means PhysiJS won't attempt to move the object for us.
     this.__dirtyPosition = true;
     this.__dirtyRotation = true;
+};
+SuperMega.Interactable.velocity_at_point = function(pos){
+    /**
+     *  Works out what the velocity (in world vectors) will be at the
+     *  point (pos) on the object if contact occurs
+     *  
+     *  @TODO: Make smarter so it can check if a collision would actually have occurred!!
+     *  
+     *  @param pos: <THREE.Vector3> in world coordinates
+     *  
+     *  @return velocity: <THREE.Vector3> The velocity of the object (translational velocity + rotational velocity)
+     */
+    //Turn position into ##HERE##
+    
 };
 SuperMega.Interactable.prototype.on_collision = function(level, callback){
     /**

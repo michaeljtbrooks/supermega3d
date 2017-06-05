@@ -175,7 +175,7 @@ var level_contents = {
                 //Step up to floor 4
                 {"size":[10,24,2], "position":[Math.sin(DEG180+DEG15)*40,Math.cos(DEG180+DEG15)*40,25], "orientation":[0,0,-(DEG180+DEG15),"ZXY"]},
                 //Floor 4 - Bobbing platforms:
-                {"size":[8,10,2], "position":[-18.0,-72, 22], "translation":[0,0,15], "translation_mode":"reciprocating", "magnitude":15, "colour": 0xAA8833},
+                {"size":[8,12,2], "position":[-18.0,-72, 22], "translation":[0,0,15], "translation_mode":"reciprocating", "magnitude":15, "colour": 0xAA8833},
                 {"size":[8,10,2], "position":[-35.0,-72, 22], "translation":[0,0,10], "translation_mode":"reciprocating", "magnitude":15, "colour": 0xAA8833},
                 {"size":[10,15,2], "position":[-52.0,-69, 29], "translation":[0,15,5], "translation_mode":"reciprocating", "magnitude":30, "colour": 0xAA8833}, //Diagonal slider
                 //Floor 5 mini-tower breather with switch to activate shortcut lift
@@ -207,6 +207,8 @@ var level_contents = {
                 {"size":[160,3,1], "position":[0,80,19.5]}, //Wall4
                 //Spinning jump bar floor 3
                 {"size":[80,2,4], "position":[0,0,22], "angular_momentum":[0,0,DEG45], "rotation_mode":"continuous"},
+                //Modified spinning jump bar floor 3 (r*tan a) NOT WORKING
+                //{"size":[16,2,4], "position":[0,0,22], "angular_momentum":[0,0,DEG45*1.414], "rotation_mode":"continuous", "translation_mode":"orbiting", "translation":[Math.tan(-DEG45),Math.tan(-DEG45),0], "magnitude":38},
                 //Floor 4 - fence between bobbing platforms 1 and 2
                 {"size":[2,12,4], "position":[-25.5, -72, 29]},
                 //Floor 4 - moving fence between bobbing platforms 2 and 3
@@ -216,7 +218,7 @@ var level_contents = {
                 {"name":"trap_ice_bar_orbiter", "size":[5,2,5],"position":[40,-11,50],"translation_mode":"orbiting","translation":[2,0,2], "magnitude":5},
                 {"name":"trap_ice_bar_slider2", "size":[2,2,6],"position":[43,5,54],"translation_mode":"reciprocating","translation":[-6,0,0], "magnitude":6},
                 //Barrel rolling down ice bar 2:
-                {"name":"trap_ice_bar2_barrel", "mesh_type":"cylinder", "size":[1,1,3],"position":[-3,39,65],"translation_mode":"reciprocating","translation":[15.455,0,-4.141], "magnitude":38},
+                {"name":"trap_ice_bar2_barrel", "mesh_type":"cylinder", "size":[1,1,3],"position":[-3,39,65],"translation_mode":"reciprocating","translation":[15.455,0,-4.141], "magnitude":36},
             ],
             "noms":[
                 {"position":[0,0,5.5], "translation":[-1.2,-1.2,0], "translation_mode":"orbiting", "magnitude":35}, //Sits on first floor acw
@@ -248,8 +250,8 @@ var level_contents = {
             "ends":[],
             "world_width":32,
             "world_depth":32,
-            "start_position": new THREE.Vector3(40,50,12), //Where player starts
-            //"start_position": new THREE.Vector3(44,33,55), //tEST
+            //"start_position": new THREE.Vector3(40,50,12), //Where player starts
+            "start_position": new THREE.Vector3(40,-31,54), //tEST
             "start_orientation" : new THREE.Euler(0,0,-DEG45) //Face the cylinder
         }
         
