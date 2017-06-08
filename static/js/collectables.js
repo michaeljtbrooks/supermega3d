@@ -1478,7 +1478,7 @@ SuperMega.Player = function (options, scene, hud){
     this.reset(scene, hud);
     
     //Bin gravity
-    
+    //this._physijs.setGravity(0); //Turn off gravity so player isn't jerking around. NOT WORKING
     
 };
 SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.prototype), {
@@ -1886,7 +1886,8 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                     var this_distance = thisplayer.position.z - terrain_z;
                     var this_collision = {
                         "distance" : this_distance,
-                        "object" : terrain
+                        "object" : terrain,
+                        "point" : new THREE.Vector3(global_point.x, global_point.y, terrain_z) //Straight down
                     }
                     //We will ignore any terrain that's above you:
                     if(this_distance >= 0){
@@ -1991,12 +1992,15 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                 //Will may collide... Is the velocity of the object in that plane + player velocity greater than the ray dist?
                 if(min_coll_obj){
                     if(min_coll_obj.velocity){ //Only process if this has a velocity
+                        //NB: a collision object returns: { distance, point, face, faceIndex, indices, object }
+                        //We can use the {point} var to get the world collision point
                         var collider_velocity = thisplayer.get_player_centric_velocity(min_coll_obj); //Turns platform velocity into player's velocity
+                        min_coll_obj.velocity_at_point(min_coll.point); //See the point of collision in terms of local position
                         //We must now add in the rotational component of this object:
                         //TODO
                         //Calculate the impact distance necessary
-                        var impact_distance = (thisplayer.velocity[axis_dimension] + collider_velocity[axis_dimension])*delta;
-                        if(impact_distance > min_coll_distance){ //This is a collision worthy of punting!
+                        var combined_distance_travelled = (thisplayer.velocity[axis_dimension] + collider_velocity[axis_dimension])*delta;
+                        if(combined_distance_travelled > min_coll_distance){ //This is a collision worthy of punting!
                             output.axis_move = collider_velocity[axis_dimension]*delta; //This is the vector displacement to punt the player
                             if(direction_component<0){ //It's gonna get flipped from a scalar to a vector so lets flip it first, so the flip back corrects it!!
                                 output.axis_move = output.axis_move * -1; 
@@ -2440,7 +2444,7 @@ SuperMega.Player.prototype.zCollisionPrediction = function(otherObjs){
                 vertex_collisions.push(ray_distance);
                 collided_with_objects.push(collided_with);
                 standing_on_ids.push(collided_with.object.id); //Add its ID into the list of objects you are standing on
-                all_floor_properties.push(collided_with.object.material._physijs); //Allows us to get the friction and restitution of the object! ##HERE##
+                all_floor_properties.push(collided_with.object.material._physijs); //Allows us to get the friction and restitution of the object!
             } else { //No collisions of ray with objects / ground
                 vertex_collisions.push(Infinity);
                 collided_with_objects.push(null);
@@ -3660,7 +3664,7 @@ SuperMega.Interactable.prototype.animate = function(delta){
     this.__dirtyPosition = true;
     this.__dirtyRotation = true;
 };
-SuperMega.Interactable.velocity_at_point = function(pos){
+SuperMega.Interactable.prototype.velocity_at_point = function(pos){
     /**
      *  Works out what the velocity (in world vectors) will be at the
      *  point (pos) on the object if contact occurs
@@ -3671,7 +3675,17 @@ SuperMega.Interactable.velocity_at_point = function(pos){
      *  
      *  @return velocity: <THREE.Vector3> The velocity of the object (translational velocity + rotational velocity)
      */
-    //Turn position into ##HERE##
+    //Turn strike position into correct linear velocity
+    
+    //rotationalVelocity:
+    //Assumption 1: The strike point is the surface of the object
+    var local_coll_point = pos.sub(this.position); //Gets the point relative to this object's position
+    var distance_from_axis = this.position.distanceTo(pos); //Gets r (scalar distance away from axis)
+    //D("Local collision point: "+local_coll_point.str());
+    //Calculate the moment at that point 
+    if(this.ops.angular_momentum){
+        //var moment = this.ops.angular_momentum.multiplyScalar(distance_from_axis); //##HERE##
+    }
     
 };
 SuperMega.Interactable.prototype.on_collision = function(level, callback){
