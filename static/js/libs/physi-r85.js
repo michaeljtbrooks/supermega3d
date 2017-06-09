@@ -1082,6 +1082,23 @@ window.Physijs = (function() {
 			this.world.execute( 'setCcdSweptSphereRadius', { id: this._physijs.id, radius: radius } );
 		}
 	};
+	
+	/** 
+	 * Physijs.Mesh.setGravity
+	 *  
+	 * Calls to underlying ammo.js to set the gravity on one object only...
+	 * 
+	 * @param g: The gravity to apply to this
+	 */
+    Physijs.Mesh.prototype.applyMeshGravity = function ( g ) {
+        if ( this.world ) {
+            if(typeof g == "number"){
+                g = {x:0,y:0,z:g}; //Turn into a vectoroid
+            }
+            this.world.execute( 'setGravity', { id: this._physijs.id, x: g.x, y: g.y, z: g.z } );
+            this.world.execute( 'applyMeshGravity', { id: this._physijs.id, x: g.x, y: g.y, z: g.z } );
+        }
+    };
 
 
 	// Physijs.PlaneMesh

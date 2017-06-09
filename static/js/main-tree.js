@@ -147,6 +147,10 @@ var level_contents = {
                 {"width":160, "depth":160, "width_vertices":32, "depth_vertices":32, "multiplier":0.25, "subtractor":0}
             ],
             "platforms":[
+                //Test  
+                //{"size":[4,4,8], "position":[40,50,-4], "translation":[10,0,0], "translation_mode":"reciprocating", "magnitude":20, "colour": 0xAA8833},
+                //{"size":[4,4,8], "position":[60,30,-4], "translation":[0,10,0], "translation_mode":"reciprocating", "magnitude":20, "colour": 0xAA8833},
+                //Walls
                 {"size":[3,160,14], "position":[-80,0,-2], "colour":0xE0B5A8, "transparent":true, "opacity":0.4}, //Wall1
                 {"size":[3,160,14], "position":[80,0,-2], "colour":0xE0B5A8, "transparent":true, "opacity":0.4}, //Wall2
                 {"size":[160,3,14], "position":[0,-80,-2], "colour":0xE0B5A8, "transparent":true, "opacity":0.4}, //Wall3
@@ -159,7 +163,7 @@ var level_contents = {
                 {"mesh_shape":"cylinder", "size":[30,30,150], "colour":0xF0F0E0, "position":[0,0,67], "orientation":[DEG90,0,0]}, //Big F/O cylinder
                 {"mesh_shape":"cylinder", "size":[38,38,3], "position":[0,0,148], "orientation":[DEG90,0,0]},  //Big F/O cylinder topper
                 //Ground orbiter cw
-                {"size":[16,16,4], "position":[0,0,-3], "orientation":[0,0,0], "translation":[1,1,0], "translation_mode":"orbiting", "magnitude":41, "colour": 0xAA8833}, //First moving platform
+                {"size":[16,16,6], "position":[0,0,-5], "orientation":[0,0,0], "translation":[1,1,0], "translation_mode":"orbiting", "magnitude":41, "colour": 0xAA8833}, //First moving platform
                 //Orbiter acw
                 {"size":[12,12,4], "position":[0,0,3], "orientation":[0,0,DEG45], "translation":[-1.2,-1.2,0], "translation_mode":"orbiting", "magnitude":38, "colour": 0xAA8833},
                 //Solitary stable platform floor 2
@@ -197,6 +201,8 @@ var level_contents = {
                 {"size":[2,48,2], "position":[40,-11,50], "preset":"ice_platform"}, //Ice bar 1
                 {"size":[12,12,2], "position":[40,33,51], "preset":"ice_platform"}, //Ice rest between bars
                 {"size":[48,2,2], "position":[20,39,57], "preset":"ice_platform", "orientation":[0,DEG15,0]}, //Ice bar 2, ramping up
+                //Floor 7 (rolling logs)
+                //{"mesh_shape":"cylinder", "segments":[10,1], "size":[4,4,30], "position":[-18,39,65], "orientation":[0,0,DEG90], "rotation_mode":"continuous", "angular_momentum":[0,DEG90,0]}, //Rolling log 1
                 
             ],
             "traps":[
@@ -1235,7 +1241,7 @@ function connect(nickname) {
 function createScene(data) {
     
     //Player gets created first (this doesn't make a difference to the 
-    player = new SuperMega.Player({player_id : data.player.player_id, nickname : nickname}, scene, hud);
+    player = new SuperMega.Player({player_id : data.player.player_id, nickname : nickname}, level, hud);
     var LOCAL_PLAYER = player; //Just so it's easy to find!
     
     console.log(data);

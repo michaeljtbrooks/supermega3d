@@ -387,12 +387,23 @@ if ( description.children ) {
 		rbInfo.set_m_restitution( _materials[ description.materialId ].restitution );
 	}
 
-	body = new Ammo.btRigidBody( rbInfo );
-	Ammo.destroy(rbInfo);
-
+	body = new Ammo.btRigidBody( rbInfo );	
+	description._ammo = body;
+    Ammo.destroy(rbInfo); //Comment this out if you wish to expose full Ammo.js to the body
+	
+	
 	if ( typeof description.collision_flags !== 'undefined' ) {
 		body.setCollisionFlags( description.collision_flags );
 	}
+	
+	/*
+     * MJTB 2017-06-09 - Improving player control support
+     */
+    if(description.kinematic){ //We'll make this a kinematic shape (moves other things, but is not moved by other things in Bullet/Ammo)
+        body.setCollisionFlags(body.getCollisionFlags | Ammo.btCollisionObject.CF_KINEMATIC_OBJECT); //Apparently tells us this is kinematic object
+    }
+    
+    
 
 	world.addRigidBody( body );
 
@@ -671,6 +682,13 @@ public_functions.setCcdMotionThreshold = function ( details ) {
 
 public_functions.setCcdSweptSphereRadius = function ( details ) {
 	_objects[details.id].setCcdSweptSphereRadius( details.radius );
+};
+
+public_functions.setMeshGravity = function ( details ) {
+    _objects[details.id].setGravity( details.x, details.y, details.z );
+};
+public_functions.applyGravity = function ( details ) {
+    _objects[details.id].applyGravity( details.x, details.y, details.z );
 };
 
 public_functions.addConstraint = function ( details ) {
