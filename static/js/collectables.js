@@ -122,7 +122,7 @@ var D = function(str_msg){
 };
 
 
-//Central physics constants@:
+//Central physics constants:
 var phys = {
         //Player
         "TOP_SPEED" : 25.0, //Players top speed (m/s) at basic power
@@ -137,6 +137,7 @@ var phys = {
         //Other behaviour
         "PLAYER_CAN_ACCELERATE_IN_AIR" : true //Will be used by our animation engine
 };
+var USE_PHYSIJS_FOR_PLAYER = false;
 
 
 //SuperMega Namespace
@@ -1439,12 +1440,17 @@ SuperMega.Level.prototype.completed = function(player){
  */
 SuperMega.Player = function (options, level, hud){
     //Construction
+    var default_mass = 0;
+    if(USE_PHYSIJS_FOR_PLAYER){
+        default_mass = 10;
+    }
+    
     
     //Resolve options:
     options = options || {};
     options.local = options.local || true; //If this is the local player or not
     options.color = options.color || options.colour || this.POWER_COLOURS[0];
-    options.mass = options.mass || 0; //Physijs doesn't work without mass, but is jerking us around
+    options.mass = options.mass || default_mass; //Physijs doesn't work without mass, but is jerking us around
     options.player_id = options.player_id || Math.round(Math.random()*99999); //Give random ID
     options.nickname = options.nickname || "SuperMega #"+options.player_id;
     
@@ -1481,7 +1487,17 @@ SuperMega.Player = function (options, level, hud){
     this.reset(scene, hud);
     
     //Bin gravity
-    //this.applyMeshGravity(0); //Turn off gravity so player isn't jerking around
+    if(USE_PHYSIJS_FOR_PLAYER){
+        this.applyMeshGravity(0); //Turn off gravity so player isn't jerking around
+        this._physijs.collision_flags = 2; //Bitwise to mean "kinematic" body
+        this.on_collision(level, function(other_object, relative_velocity, relative_rotation, contact_normal){
+            D("Collided:");
+            D(other_object);
+            D(relative_velocity);
+            D(relative_rotation);
+            D(contact_normal);
+        })
+    }
     
 };
 SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.prototype), {
@@ -2003,7 +2019,7 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                         var collider_velocity_player = thisplayer.get_player_centric_velocity(null, collider_velocity_world); //Turns platform velocity into player's velocity
                         //Calculate the impact distance necessary
                         var combined_distance_travelled = (thisplayer.velocity[axis_dimension] + collider_velocity_player[axis_dimension])*delta;
-                        D("Combined distance: "+combined_distance_travelled+" min_coll_dist: "+min_coll_distance);
+                        //D("Combined distance: "+combined_distance_travelled+" min_coll_dist: "+min_coll_distance);
                         if(combined_distance_travelled >= min_coll_distance){ //This is a collision worthy of punting!
                             output.axis_move = collider_velocity_player[axis_dimension]*delta; //This is the vector displacement to punt the player
                             if(direction_component<0){ //It's gonna get flipped from a scalar to a vector so lets flip it first, so the flip back corrects it!!
@@ -2012,7 +2028,6 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                             //Transfer momentum to player
                             thisplayer.velocity[axis_dimension] = thisplayer.velocity[axis_dimension] + collider_velocity_player[axis_dimension]; 
                             D("PUNT! SM:"+thisplayer.velocity.str()+" Pltf:"+collider_velocity_player.str());
-                            D(min_coll_obj);
                         }
                     }
                }
@@ -2108,6 +2123,7 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
     //var vector_to_move = (player.velocity.z + player.standing_on_velocity.z) * delta;
     //verdict["z"] = player.get_directional_collisions(vector_to_move, "z", level.collidables, 1); //to_move, axis_name, target_objects, relative_direction (if vector zero)
     var standing_on = false; //Assume you are NOT standing on something
+    var standing_on_point = ZERO_VECTOR3 //Not standing on owt.
     
     //Start with the Z axis... this plays totally differently, we make it absolute:
     //var vector_to_move = (player.velocity[axis] + player.standing_on_velocity[axis]) * delta;
@@ -2147,6 +2163,7 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
     //Resolve falling
     if(verdict["z_minus"].collided_with){ //You have an object at your feet!
         standing_on = verdict["z_minus"].collided_with;
+        standing_on_point = verdict["z_minus"].min_collision.point;
         player.velocity.z=0; //Stop moving up or down
     } 
     if(verdict["z"].collided_with){ //Hit your head!
@@ -2208,7 +2225,8 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
         player.standing = true;
         player.isJumping = false;
         //Adjust the player's velocity to match the platform
-        player.adjustStandingOnVelocity(standing_on);
+        //player.adjustStandingOnVelocity(standing_on); //Old method
+        player.adjust_standing_on_velocity_inc_rotation(standing_on, standing_on_point); //Takes into account the rotational velocity of the object
     }
     
     //Perform velocity decay (from friction and air resistance)
@@ -2217,8 +2235,12 @@ SuperMega.Player.prototype.move_according_to_velocity2 = function(delta, level){
     this.velocity.y = this.velocity.y - y_surface_decay_amount - (this.velocity.y * phys.AIR_DRAG_COEFF * delta);
     
     //Update position:
-    player.__dirtyPosition = true;
-    player.__dirtyRotation = true;
+    if(!USE_PHYSIJS_FOR_PLAYER){
+        player.__dirtyPosition = true;
+        player.__dirtyRotation = true;
+    } else {
+        player.setLinearVelocity(this.velocity.x, this.velocity.y, this.velocity.z);
+    }
     
     //Show debug info
     this.update_debug_stats(verdict["x"].axis_move.toFixed(2), verdict["y"].axis_move.toFixed(2), verdict["z"].axis_move.toFixed(2)+" S:"+player.standing);    
@@ -2267,8 +2289,10 @@ SuperMega.Player.prototype.reset = function(options, scene, hud){
         
         //Show player!
         this.visible = true;
-        this.__dirtyPosition = true;
-        this.__dirtyRotation = true;
+        if(!USE_PHYSIJS_FOR_PLAYER){
+            this.__dirtyPosition = true;
+            this.__dirtyRotation = true;
+        }
 };
 SuperMega.Player.prototype.rotateVelocity = function(z_rotation_speed){
         /**
@@ -2307,7 +2331,7 @@ SuperMega.Player.prototype.get_player_centric_velocity = function(entity, veloci
     }
     
     //Default to Zero if not supplied
-    if(typeof plat_vel == "undefined"){ //No velocity stated
+    if(typeof plat_vel == "undefined" || plat_vel === null){ //No velocity stated
         plat_vel = ZERO_VECTOR3; //It has ZERO velocity.
     } else { //Convert to velocity in terms of player's orientation
         plat_vel = plat_vel.clone(); //Copy to thing
@@ -2328,6 +2352,25 @@ SuperMega.Player.prototype.adjustStandingOnVelocity = function (platformObj){
     var plat_vel = this.get_player_centric_velocity(platformObj);
     this.standing_on_velocity = plat_vel;
     return plat_vel;
+};
+SuperMega.Player.prototype.adjust_standing_on_velocity_inc_rotation = function (platform_obj, contact_vertex_position){
+    /**
+     * Adjusts the player's base velocity to the platform you are standing on
+     * @param platformObj: The object you are standing on
+     * @param contact_vertex_position: The vertex in touch with the platform
+     * @return: <THREE.Vector3> Final velocity
+     */
+    if(!platform_obj){
+        return this.standing_on_velocity.clone();
+    }
+    try{
+        var plat_vel_world = platform_obj.velocity_at_point(contact_vertex_position);
+    }catch(e){
+        var plat_vel_world = platform_obj.velocity; //Terrain doesn't have velocity_at_point      
+    }
+    var plat_vel_player = this.get_player_centric_velocity(null, plat_vel_world);
+    this.standing_on_velocity = plat_vel_player;
+    return plat_vel_player;
 };
 SuperMega.Player.prototype.detectCollision = function(otherObjs){
         /**
@@ -2671,8 +2714,10 @@ SuperMega.Player.prototype.adjust_to_stand_on_terrain = function(terrain_objs){
             }
 
             // Since players are physics objects, physijs requires this hack
-            this.__dirtyPosition = true;
-            this.__dirtyRotation = true;
+            if(!USE_PHYSIJS_FOR_PLAYER){
+                this.__dirtyPosition = true;
+                this.__dirtyRotation = true;
+            }
         }
         
         return this; //For chaining        
@@ -2857,9 +2902,12 @@ SuperMega.Player.prototype.move_according_to_velocity = function(delta, level){
     
         
         //Update physi.js
-        this.__dirtyPosition = true;
-        this.__dirtyRotation = true;
+        if(!USE_PHYSIJS_FOR_PLAYER){
+            this.__dirtyPosition = true;
+            this.__dirtyRotation = true;
+        }
        
+            
         //If you have moved, are you still on the ground?
         //jumpingOrFallingPlayerZ(p); //This will soon be replaced by our clever vertical rays
         this.adjust_to_stand_on_terrain(all_terrain); //Player intrinsic method
@@ -3297,7 +3345,7 @@ SuperMega.Interactable = function (options){
     //Ensure we have valid Vectors and Eulers coming in: 
     if(options.position){options.position = SuperMega.resolve_vector(options.position);}
     if(options.translation){options.translation = SuperMega.resolve_vector(options.translation);}
-    if(options.angular_momentum){options.angular_momentum = SuperMega.resolve_euler(options.angular_momentum);} 
+    if(options.angular_momentum){options.angular_momentum = SuperMega.resolve_vector(options.angular_momentum);} //Yes this SHOULD be a vector!!
     if(options.orientation){options.orientation = SuperMega.resolve_euler(options.orientation);}
 
     
@@ -3657,7 +3705,9 @@ SuperMega.Interactable.prototype.get_angular_velocity = function(){
      * @return: <THREE.Vector3> The angular velocity (yes it can be more than 2PI for fast spinning things!)
      */
     if(this.ops.rotation_mode == "continuous" || this.ops.rotation_mode == "oscillating"){
-        return this.ops.angular_momentum;
+        //Need to rotate this by its initial orientation!
+        var resolved_angular_momentum = this.ops.angular_momentum.clone().applyEuler(this.ops.orientation);
+        return resolved_angular_momentum;
     }
     return ZERO_VECTOR3;
 };
@@ -3678,9 +3728,60 @@ SuperMega.Interactable.prototype.velocity_at_point = function(pos){
         return this.velocity;
     }
     
-    var w_xyz, w, wt, Sx, Sy, Sz, r, VRXy, VRXz, VRYx, VRYz, VRZx, VRZy;
+    
+    /*
+     * I had a revelation:
+     * We don't need to "prove" that you have collided with the object because that's already known.
+     * So we don't need to bother working out where a point in space is now versus where it was in
+     * time = 0.
+     * 
+     * Rather, since a collision has happened when we enter this method, we can simply assume that
+     * some point somewhere on the object has been hit. And it doesn't matter which precise point
+     * was hit, just it's distance of contact point from the axis of rotation which matters!!
+     * 
+     * Let Sx = distance between collision point (Ax) and (origin axis Ox) = Ax - Ox
+     * Let Sy = distance between collision point (Ay) and (origin axis Oy) = Ay - Oy  
+     * 
+     * VRZx =  (Sy/Sx) * w * sqrt(Sx^2 + Sy^2) / sqrt((Sy/Sx)^2+1)
+     * VRZy =  w * sqrt(Sx^2 + Sy^2) / sqrt((Sy/Sx)^2+1) 
+     * 
+     */
+    
+    
+    var dir,w_xyz, w, wt, Sx, Sy, Sz, r, VRXy=0, VRXz=0, VRYx=0, VRYz=0, VRZx=0, VRZy=0;
     
     //----- Z-axis rotations -----
+    
+    //Precompute the reusable stuff
+    wt = this.rotation.z;
+    w_xyz = this.get_angular_velocity();
+    if(w_xyz.z==0){ //Bail if not rotating in z plane
+        VRZx = 0;
+        VRZy = 0;
+    } else {
+        w = w_xyz.z;
+        Sx = pos.x - this.position.x;
+        Sy = pos.y - this.position.y;
+        var Sy_div_Sx = Sy/Sx;
+        D("Sy/Sx: "+Sy_div_Sx);
+        var Sy_div_Sx_pow2 = Math.pow(Sy_div_Sx, 2);
+        D("(Sy/Sx)^2: "+Sy_div_Sx_pow2);
+        var sqrt_Sx2_plus_Sy2 = Math.sqrt(Math.pow(Sx,2) + Math.pow(Sy,2));
+        D("_/(Sy^2 + Sx^2): "+sqrt_Sx2_plus_Sy2);
+        var inv_sqrt_Sy_div_Sx_pow2_plus_1 = 1/(Math.sqrt(Sy_div_Sx_pow2+1.0));
+        D("1/(_/(Sy/Sx)^2+1): "+inv_sqrt_Sy_div_Sx_pow2_plus_1);
+        var meat = w * sqrt_Sx2_plus_Sy2 * inv_sqrt_Sy_div_Sx_pow2_plus_1;   
+        
+        VRZx = Sy_div_Sx * meat;
+        VRZy = meat;
+    }
+    
+    
+    
+    
+    
+    //-------- Old method ------
+    /*
     wt = this.rotation.z;
     w_xyz = this.get_angular_velocity();
     if(w_xyz.z==0){ //Bail if not rotating in z plane
@@ -3691,12 +3792,13 @@ SuperMega.Interactable.prototype.velocity_at_point = function(pos){
         Sx = this.position.x - pos.x;
         Sy = this.position.y - pos.y;
         r = Math.sqrt(Math.pow(Sx,2) + Math.pow(Sy,2)); //Expensive
-        VRZx = -r*w*Math.sin(wt);
-        VRZy = r*w*Math.cos(wt);
+        VRZx = -Sx*w*Math.sin(wt);
+        VRZy = Sy*w*Math.cos(wt);
     }
     
     //----- X-axis rotations ----
     wt = this.rotation.x;
+    D(wt);
     w_xyz = this.get_angular_velocity();
     if(w_xyz.x==0){ //Bail if not rotating in z plane
         VRXz = 0;
@@ -3705,9 +3807,12 @@ SuperMega.Interactable.prototype.velocity_at_point = function(pos){
         w = w_xyz.x;
         Sz = this.position.z - pos.z;
         Sy = this.position.y - pos.y;
+        D("Sz: "+Sz+" Sy: "+Sy);
         r = Math.sqrt(Math.pow(Sz,2) + Math.pow(Sy,2)); 
-        VRXz = -r*w*Math.sin(wt);
-        VRXy = r*w*Math.cos(wt);
+        //VRXy = r*w*Math.sin(w);
+        //VRXz = -r*w*Math.cos(w);
+        VRXy = r*w*Math.sin(w);
+        VRXz = -r*w*Math.cos(w);
     }
     
     //----- Y-axis rotations -----
@@ -3721,10 +3826,12 @@ SuperMega.Interactable.prototype.velocity_at_point = function(pos){
         Sx = this.position.x - pos.x;
         Sz = this.position.y - pos.z;
         r = Math.sqrt(Math.pow(Sx,2) + Math.pow(Sz,2)); //Expensive
-        VRYx = -r*w*Math.sin(wt);
-        VRYz = r*w*Math.cos(wt);
+        VRYx = -r*w*Math.sin(w);
+        VRYz = r*w*Math.cos(w);
     }
+    D("VRXz: "+VRXz+" VRXy: "+VRXy);
     
+    */
     
     //Now add the linear velocity from rotation onto the platform's existing linear velocity:
     var Vx = this.velocity.x + VRYx + VRZx;

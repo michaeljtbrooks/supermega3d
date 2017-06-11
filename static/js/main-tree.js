@@ -202,8 +202,11 @@ var level_contents = {
                 {"size":[12,12,2], "position":[40,33,51], "preset":"ice_platform"}, //Ice rest between bars
                 {"size":[48,2,2], "position":[20,39,57], "preset":"ice_platform", "orientation":[0,DEG15,0]}, //Ice bar 2, ramping up
                 //Floor 7 (rolling logs)
-                //{"mesh_shape":"cylinder", "segments":[10,1], "size":[4,4,30], "position":[-18,39,65], "orientation":[0,0,DEG90], "rotation_mode":"continuous", "angular_momentum":[0,DEG90,0]}, //Rolling log 1
+                {"mesh_shape":"cylinder", "segments":[10,1], "size":[4,4,30], "position":[-18,39,65], "orientation":[0,0,DEG90], "rotation_mode":"continuous", "angular_momentum":[0,DEG90,0]}, //Rolling log 1
                 
+                //Test
+                {"mesh_shape":"cylinder", "segments":[10,1], "size":[8,8,30], "position":[-18,55,-6], "orientation":[0,0,DEG90], "rotation_mode":"continuous", "angular_momentum":[0,DEG90,0]}, //Rolling log 1
+                {"size":[120,2,4], "position":[0,0,-4], "angular_momentum":[0,0,DEG45], "rotation_mode":"continuous"},
             ],
             "traps":[
                 //Anti-climb paint
@@ -256,8 +259,8 @@ var level_contents = {
             "ends":[],
             "world_width":32,
             "world_depth":32,
-            //"start_position": new THREE.Vector3(40,50,12), //Where player starts
-            "start_position": new THREE.Vector3(40,-31,54), //tEST
+            "start_position": new THREE.Vector3(40,50,12), //Where player starts
+            //"start_position": new THREE.Vector3(40,-31,54), //tEST
             "start_orientation" : new THREE.Euler(0,0,-DEG45) //Face the cylinder
         }
         
@@ -1809,7 +1812,7 @@ function animate(delta) {
             player.standing_on_velocity = new THREE.Vector3(0,0,0);
         }
         if(isKeyDown(KEYCODE['9'])){ //Boost up
-            player.position.z = 60;
+            player.position.z = 80;
             player.velocity.z = 0;
             player.standing_on_velocity = new THREE.Vector3(0,0,0);
         }
