@@ -171,6 +171,7 @@ var level_contents = {
                 //Slope to floor 3
                 {"size":[8,20,2], "position":[-32,26,16], "orientation":[-DEG45/2,0,DEG45,"ZXY"]},
                 //Floor 3 spokes
+                {"size":[6,12,2], "position":[Math.sin(-DEG30)*35,Math.cos(-DEG30)*35,19], "orientation":[0,0,DEG30,"ZXY"]},
                 {"size":[12,12,2], "position":[Math.sin(0)*35,Math.cos(0)*35,19], "orientation":[0,0,-0,"ZXY"]},
                 {"size":[12,12,2], "position":[Math.sin(DEG45)*35,Math.cos(DEG45)*35,19], "orientation":[0,0,-DEG45,"ZXY"]},
                 {"size":[12,12,2], "position":[Math.sin(DEG90)*35,Math.cos(DEG90)*35,19], "orientation":[0,0,-DEG90,"ZXY"]},
