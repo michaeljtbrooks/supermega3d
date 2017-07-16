@@ -2014,13 +2014,17 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                     if(min_coll_obj.velocity){ //Only process if this has a velocity
                         //NB: a collision object returns: { distance, point, face, faceIndex, indices, object }
                         //We can use the {point} var to get the world collision point
-                        var collider_velocity_world = min_coll_obj.velocity_at_point(min_coll.point); //Gets the velocity conferred by both rotation and linear velocities of the platform
+                        var collider_velocity_world = min_coll_obj.velocity_at_point_simplified(min_coll.point); //Gets the velocity conferred by both rotation and linear velocities of the platform
                         //D(collider_velocity_world);
                         var collider_velocity_player = thisplayer.get_player_centric_velocity(null, collider_velocity_world); //Turns platform velocity into player's velocity
                         //Calculate the impact distance necessary
-                        var combined_distance_travelled = (thisplayer.velocity[axis_dimension] + collider_velocity_player[axis_dimension])*delta;
+                        var combined_distance_travelled = (thisplayer.velocity[axis_dimension] + collider_velocity_player[axis_dimension])*delta*normalised_relative_to_move;
                         //D("Combined distance: "+combined_distance_travelled+" min_coll_dist: "+min_coll_distance);
-                        if(combined_distance_travelled >= min_coll_distance){ //This is a collision worthy of punting!
+                        //D("combined_distance_travelled="+combined_distance_travelled+"  min_coll_distance="+min_coll_distance);
+                        //if(combined_distance_travelled >= (min_coll_distance*normalised_relative_to_move)){ //This is a collision worthy of punting!
+                        
+                        //Is this a collision worthy of a punt?
+                        if((combined_distance_travelled > 0 && combined_distance_travelled >= min_coll_distance) || (combined_distance_travelled < 0 && combined_distance_travelled <= min_coll_distance)){ //This ensures we consider direction
                             output.axis_move = collider_velocity_player[axis_dimension]*delta; //This is the vector displacement to punt the player
                             if(direction_component<0){ //It's gonna get flipped from a scalar to a vector so lets flip it first, so the flip back corrects it!!
                                 output.axis_move = output.axis_move * -1; 
@@ -2028,6 +2032,12 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                             //Transfer momentum to player
                             thisplayer.velocity[axis_dimension] = thisplayer.velocity[axis_dimension] + collider_velocity_player[axis_dimension]; 
                             D("PUNT! SM:"+thisplayer.velocity.str()+" Pltf:"+collider_velocity_player.str());
+                            
+                            //Call the object's touched method:
+                            try{
+                                min_coll_obj.touched(delta, thisplayer);
+                            }catch(err){ //When there is no .touched() method!
+                            }
                         }
                     }
                }
@@ -2324,10 +2334,10 @@ SuperMega.Player.prototype.get_player_centric_velocity = function(entity, veloci
         //Assume a velocity provided
         var plat_vel = velocity;
     } else if(typeof entity.object != "undefined"){
-        var plat_vel = entity.object.velocity;
+        var plat_vel = velocity || entity.object.velocity; //ensure than an explicit velocity always overrides the derived-from-object
     }
     else{
-        var plat_vel = entity.velocity;
+        var plat_vel = velocity || entity.velocity;
     }
     
     //Default to Zero if not supplied
@@ -2336,6 +2346,7 @@ SuperMega.Player.prototype.get_player_centric_velocity = function(entity, veloci
     } else { //Convert to velocity in terms of player's orientation
         plat_vel = plat_vel.clone(); //Copy to thing
         plat_vel = plat_vel.applyZRotation3(this.rotation.z);
+        //D("Rotated velocity to match player: "+plat_vel.str());
     }
     
     return plat_vel;
@@ -2364,7 +2375,7 @@ SuperMega.Player.prototype.adjust_standing_on_velocity_inc_rotation = function (
         return this.standing_on_velocity.clone();
     }
     try{
-        var plat_vel_world = platform_obj.velocity_at_point(contact_vertex_position);
+        var plat_vel_world = platform_obj.velocity_at_point_simplified(contact_vertex_position);
     }catch(e){
         var plat_vel_world = platform_obj.velocity; //Terrain doesn't have velocity_at_point      
     }
@@ -3711,6 +3722,58 @@ SuperMega.Interactable.prototype.get_angular_velocity = function(){
     }
     return ZERO_VECTOR3;
 };
+SuperMega.Interactable.prototype.velocity_at_point_simplified = function(pos){
+    /**
+     *  Works out what the velocity (in world vectors) will be at the
+     *  point (pos) on the object if contact occurs. Assumes you have already
+     *  detected a collision and this has happened now
+     *  
+     *  @param pos: <THREE.Vector3> in world coordinates of the collision point
+     *  
+     *  @return velocity: <THREE.Vector3> The velocity of the object (translational velocity + rotational velocity)
+     */
+    
+   /*
+    * I've been over complicating this!!
+    * 
+    * See: http://emweb.unl.edu/NEGAHBAN/EM373/note15/note.htm
+    * 
+    *  For a rigid body which is rotating about point O, Point A on the same rigid body has:
+    *  
+    *  Relative position = Ra = A-O //??check this assumption
+    *  
+    *  Relative velocity of A = Va = w x(cross product) Ra
+    *  
+    *  Total velocity of point A = Vo_linear + Va
+    * 
+    */
+    //Quick escapes
+    if(!pos){
+        return this.velocity;
+    }
+    if(this.ops.angular_momentum.x==0 && this.ops.angular_momentum.y==0 && this.ops.angular_momentum.z==0){
+        return this.velocity;
+    }
+    
+    var this_angular_momentum = this.get_angular_velocity(); //Ensures we don't ignore non-rotating items!!
+    
+    try{
+        var rel_pos_collision_point = this.position.clone().sub(pos); //Subtract the origin to get position of contact point relative to origin
+        var rel_velocity_collision_point = rel_pos_collision_point.clone().cross(this_angular_momentum); //Cross-product of w x Ra gives the RELATIVE velocity (does this indeed causes a perpendicular shift?? Doesn't seem to!)
+        //var world_velocity_collision_point = rel_velocity_collision_point.clone().applyEuler(-this.rotation); //Now rotate the velocity back to world (according to the current orientation of the platform) - flawed logic!!
+        var world_velocity_collision_point = rel_velocity_collision_point.add(this.velocity); //Add back in the linear velocity 
+        //D("abs_pos_coll_point = "+pos.str());
+        //D("rel_pos_coll_point = "+rel_pos_collision_point.str());
+        //D("rel_vel_coll_point = "+rel_velocity_collision_point.str());
+        //D("world_vel_coll_pnt = "+world_velocity_collision_point.str());
+        return world_velocity_collision_point;
+    }catch(err){
+        throw err;
+        console.log("Interactable.velocity_at_point_simplified: Cannot calculate velocity at collision point.");
+        return this.velocity; //Get out if fail
+    }
+    
+}
 SuperMega.Interactable.prototype.velocity_at_point = function(pos){
     /**
      *  Works out what the velocity (in world vectors) will be at the

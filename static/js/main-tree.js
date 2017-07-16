@@ -205,8 +205,8 @@ var level_contents = {
                 {"mesh_shape":"cylinder", "segments":[10,1], "size":[4,4,30], "position":[-18,39,65], "orientation":[0,0,DEG90], "rotation_mode":"continuous", "angular_momentum":[0,DEG90,0]}, //Rolling log 1
                 
                 //Test
-                {"mesh_shape":"cylinder", "segments":[10,1], "size":[8,8,30], "position":[-18,55,-6], "orientation":[0,0,DEG90], "rotation_mode":"continuous", "angular_momentum":[0,DEG90,0]}, //Rolling log 1
-                {"size":[120,2,4], "position":[0,0,-4], "angular_momentum":[0,0,DEG45], "rotation_mode":"continuous"},
+                //{"mesh_shape":"cylinder", "segments":[10,1], "size":[8,8,30], "position":[-18,55,-6], "orientation":[0,0,DEG90], "rotation_mode":"continuous", "angular_momentum":[0,DEG90,0]}, //Rolling log 1
+                //{"size":[120,4,4], "position":[0,0,-4], "angular_momentum":[0,0,DEG45], "rotation_mode":"continuous"},
             ],
             "traps":[
                 //Anti-climb paint
