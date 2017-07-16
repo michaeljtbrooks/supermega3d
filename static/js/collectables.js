@@ -2024,7 +2024,7 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                         //if(combined_distance_travelled >= (min_coll_distance*normalised_relative_to_move)){ //This is a collision worthy of punting!
                         
                         //Is this a collision worthy of a punt?
-                        if((combined_distance_travelled > 0 && combined_distance_travelled >= min_coll_distance) || (combined_distance_travelled < 0 && combined_distance_travelled <= min_coll_distance)){ //This ensures we consider direction
+                        if((combined_distance_travelled >= 0 && combined_distance_travelled >= min_coll_distance) || (combined_distance_travelled < 0 && (0-combined_distance_travelled) > min_coll_distance)){ //This ensures we consider direction
                             output.axis_move = collider_velocity_player[axis_dimension]*delta; //This is the vector displacement to punt the player
                             if(direction_component<0){ //It's gonna get flipped from a scalar to a vector so lets flip it first, so the flip back corrects it!!
                                 output.axis_move = output.axis_move * -1; 

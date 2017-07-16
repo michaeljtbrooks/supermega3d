@@ -25,7 +25,7 @@
  * Edit the var level_number to explore levels 1-4!
  * 
  */
-var level_number = 4; //What level to start on (overridden by Sandbox if on. 1 to 4)
+var level_number = 1; //What level to start on (overridden by Sandbox if on. 1 to 4)
 
 var DEBUG = true; //Debug mode
 var level; //Where we'll store our level
