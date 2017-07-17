@@ -25,7 +25,7 @@
  * Edit the var level_number to explore levels 1-4!
  * 
  */
-var level_number = 1; //What level to start on (overridden by Sandbox if on. 1 to 4)
+var level_number = 4; //What level to start on (overridden by Sandbox if on. 1 to 4)
 
 var DEBUG = true; //Debug mode
 var level; //Where we'll store our level
@@ -140,7 +140,7 @@ var level_contents = {
             "start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
         },
         
-        //Level 3 is defined below (has some randomisation on each run
+        //Level 3 is defined below (has some randomisation on each run)
         
         4:{ //Level 4 = Castle Park. A central castle tower with castle gardens 
             "terrain":[
@@ -197,13 +197,33 @@ var level_contents = {
                 {"mesh_shape":"cylinder","segments":[10,1],"size":[5,5,2],"position":[Math.sin(DEG225-DEG10)*28.5,Math.cos(DEG225-DEG10)*28.5,53], "orientation":[DEG90,0,0]}, //Bracket 3a (hidden one with power up)
                 {"mesh_shape":"cylinder","segments":[10,1],"size":[5,5,2],"position":[Math.sin(DEG225+DEG10)*27,Math.cos(DEG225+DEG10)*27,61], "orientation":[DEG90,0,0], "colour": 0xF0F0E0}, //Bracket 3b (hidden WHITE one)
                 {"mesh_shape":"cylinder","segments":[10,1],"size":[5,5,2],"position":[Math.sin(DEG180-DEG10)*28.5,Math.cos(DEG180-DEG10)*28.5,49], "orientation":[DEG90,0,0]}, //Bracket 4
-                //Floor 6 
+                {"mesh_shape":"cylinder","segments":[10,1],"size":[5,5,2],"position":[Math.sin(DEG270-DEG10)*27,Math.cos(DEG270-DEG10)*27,69], "orientation":[DEG90,0,0], "colour": 0xF0F0E0}, //Bracket 3c (hidden WHITE one)
+                //Floor 6 - Ice bars with moving traps
                 {"size":[16,8,2], "position":[31,-31,50]}, //Rest 
                 {"size":[2,48,2], "position":[40,-11,50], "preset":"ice_platform"}, //Ice bar 1
                 {"size":[12,12,2], "position":[40,33,51], "preset":"ice_platform"}, //Ice rest between bars
                 {"size":[48,2,2], "position":[20,39,57], "preset":"ice_platform", "orientation":[0,DEG15,0]}, //Ice bar 2, ramping up
                 //Floor 7 (rolling logs)
-                {"mesh_shape":"cylinder", "segments":[10,1], "size":[4,4,30], "position":[-18,39,65], "orientation":[0,0,DEG90], "rotation_mode":"continuous", "angular_momentum":[0,DEG90,0]}, //Rolling log 1
+                {"mesh_shape":"cylinder", "segments":[10,1], "size":[4,4,30], "position":[-18,39,65], "orientation":[0,0,DEG90], "rotation_mode":"continuous", "angular_momentum":[0,DEG90,0]}, //Rolling log 1 (big, running in X dim)
+                {"mesh_shape":"cylinder", "segments":[10,1], "size":[4,4,10], "position":[-40,39,68], "orientation":[0,0,0], "rotation_mode":"continuous", "angular_momentum":[0,-DEG90,0]}, //Rolling log 2 (short, running in Y dim)
+                {"mesh_shape":"cylinder", "segments":[10,1], "size":[4,4,10], "position":[-40,24,71], "orientation":[0,0,0], "rotation_mode":"continuous", "angular_momentum":[0,DEG90,0]}, //Rolling log 3 (short, running in Y dim)
+                {"mesh_shape":"cylinder", "segments":[10,1], "size":[4,4,10], "position":[-40,9,74], "orientation":[0,0,DEG90], "rotation_mode":"continuous", "angular_momentum":[0,-DEG90,0]}, //Rolling log 4 (short, running in X dim)
+                {"mesh_shape":"cylinder","segments":[10,1],"size":[5,5,2],"position":[-30,-4,77], "orientation":[DEG90,0,0]}, //Rest bracket
+                //Detour via trap laden rolling log to switch
+                {"mesh_shape":"cylinder", "segments":[10,1], "size":[4,4,26], "position":[-50,54,65], "orientation":[0,0,DEG90], "rotation_mode":"continuous", "angular_momentum":[0,DEG90,0]}, //Rolling log 3 (short, running in Y dim)
+                {"size":[8,16,2], "position":[-72,50,68]}, //Lift arrival floor with activating switch
+                //Floor 5 > Floor 7 shortcut lift
+                {"name":"five_to_seven_shortcut_lift", "size":[8,8,2], "position":[-72,38,68], "orientation":[0,0,0], "translation":[8,-8.6,-8], "translation_mode":"switched_off_reciprocating", "magnitude":65, "colour": 0xAA8833}, //Diagonal slider
+                
+                //Floor 8 - Spinning bars (all have a spindly little central spoke!
+                {"mesh_shape":"cylinder","size":[0.5,0.5,10],"position":[-42,-16,79],"colour":0xF0F0E0,  "orientation":[DEG90,0,0]}, //Spinbar 1 Shaft
+                {"name":"floor8_spinbar_1", "size":[14,5,2], "position":[-42,-16,79], "angular_momentum":[0,0,DEG45], "rotation_mode":"continuous"},
+                {"mesh_shape":"cylinder","size":[0.5,0.5,10],"position":[-48,-30,81],"colour":0xF0F0E0,  "orientation":[DEG90,0,0]}, //Spinbar 2 Shaft
+                {"name":"floor8_spinbar_2", "size":[14,5,2], "position":[-48,-30,81], "angular_momentum":[0,0,-DEG90], "rotation_mode":"continuous"},
+                {"mesh_shape":"cylinder","size":[0.5,0.5,10],"position":[-64,-18,84],"colour":0xF0F0E0,  "orientation":[DEG90,0,0]}, //Spinbar 3 Shaft
+                {"name":"floor8_spinbar_3", "size":[14,5,2], "position":[-64,-18,80], "angular_momentum":[0,0,-DEG90], "rotation_mode":"continuous", "translation_mode":"reciprocating","translation":[0,0,5], "magnitude":8}, //Spins AND moves up and down!!
+                {"mesh_shape":"cylinder","size":[0.5,0.5,10],"position":[-52,-22,92],"colour":0xF0F0E0,  "orientation":[DEG90,0,0]}, //Spinbar 4 Shaft
+                {"name":"floor8_spinbar_4", "size":[14,5,2], "position":[-52,-22,88], "angular_momentum":[0,0,DEG90], "rotation_mode":"continuous", "translation_mode":"reciprocating","translation":[0,0,7], "magnitude":8}, //Spins AND moves up and down!! Carries a switch "Hat"
                 
                 //Test
                 //{"mesh_shape":"cylinder", "segments":[10,1], "size":[8,8,30], "position":[-18,55,-6], "orientation":[0,0,DEG90], "rotation_mode":"continuous", "angular_momentum":[0,DEG90,0]}, //Rolling log 1
@@ -229,12 +249,17 @@ var level_contents = {
                 {"name":"trap_ice_bar_slider2", "size":[2,2,6],"position":[43,5,54],"translation_mode":"reciprocating","translation":[-6,0,0], "magnitude":6},
                 //Barrel rolling down ice bar 2:
                 {"name":"trap_ice_bar2_barrel", "mesh_type":"cylinder", "size":[1,1,3],"position":[-3,39,65],"translation_mode":"reciprocating","translation":[15.455,0,-4.141], "magnitude":36},
+                //Block rolling around detour log
+                {"name":"trap_detour_rolling_log_1", "size":[5,5,5],"position":[-47,54,65],"translation_mode":"orbiting","translation":[0,4,4], "magnitude":8},
+                {"name":"trap_detour_rolling_log_1", "size":[5,5,5],"position":[-53,54,65],"translation_mode":"orbiting","translation":[0,-4,-4], "magnitude":8},
             ],
             "noms":[
                 {"position":[0,0,5.5], "translation":[-1.2,-1.2,0], "translation_mode":"orbiting", "magnitude":35}, //Sits on first floor acw
                 {"position":[Math.sin(DEG180)*35,Math.cos(DEG180)*35,22]}, //On the last Floor 3 spoke
-                {"position":[-39,-12,32.5]}, //Sitting on the hidden bar under the small tower
-                {"position":[26,-31,52.5]}, //Sitting on the hidden bar under the small tower
+                {"position":[-39,-12,32.5]}, //Sitting on the hidden bar under the smaller tower
+                {"position":[26,-31,52.5]}, //On the rest platform just before the ice bars
+                {"position":[-40,24,76.5]}, //On the middle of the set of three rolling logs
+
             ],
             "powerups":[
                 {"position":[-55,55,13]}, //On the static breather platform floor 2
@@ -256,12 +281,17 @@ var level_contents = {
                         "trap_ice_bar_slider2": {"translation_mode":"reciprocating"},
                      },
                 },
+                { //Floor-7 detour (activates the 5>7 shortcut)
+                    "position":[-73,56,72], "target":"five_to_seven_shortcut_lift",
+                    "toggle_on": {"translation_mode":"reciprocating"},
+                    "toggle_off": {"translation_mode":"switched_off_reciprocating"},
+                }
             ],
             "ends":[],
             "world_width":32,
             "world_depth":32,
             "start_position": new THREE.Vector3(40,50,12), //Where player starts
-            //"start_position": new THREE.Vector3(40,-31,54), //tEST
+            //"start_position": new THREE.Vector3(-30,-4,81), //tEST
             "start_orientation" : new THREE.Euler(0,0,-DEG45) //Face the cylinder
         }
         

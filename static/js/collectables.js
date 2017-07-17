@@ -2018,20 +2018,22 @@ SuperMega.Player.prototype.get_directional_collisions = function(vector_to_move,
                         //D(collider_velocity_world);
                         var collider_velocity_player = thisplayer.get_player_centric_velocity(null, collider_velocity_world); //Turns platform velocity into player's velocity
                         //Calculate the impact distance necessary
-                        var combined_distance_travelled = (thisplayer.velocity[axis_dimension] + collider_velocity_player[axis_dimension])*delta*normalised_relative_to_move;
+                        var combined_distance_travelled = (thisplayer.velocity[axis_dimension] + collider_velocity_player[axis_dimension])*delta 
+                        var combined_distance_travelled_corrected = combined_distance_travelled*normalised_relative_to_move; //Don't need this
+                        //if(combined_distance_travelled >= (min_coll_distance*normalised_relative_to_move)){ //This is a collision worthy of punting!
                         //D("Combined distance: "+combined_distance_travelled+" min_coll_dist: "+min_coll_distance);
                         //D("combined_distance_travelled="+combined_distance_travelled+"  min_coll_distance="+min_coll_distance);
-                        //if(combined_distance_travelled >= (min_coll_distance*normalised_relative_to_move)){ //This is a collision worthy of punting!
+                        //D("["+axis_dimension+"] comb_dist="+combined_distance_travelled + " norm_rel="+normalised_relative_to_move+" min_coll_dist="+min_coll_distance);
                         
-                        //Is this a collision worthy of a punt?
-                        if((combined_distance_travelled >= 0 && combined_distance_travelled >= min_coll_distance) || (combined_distance_travelled < 0 && (0-combined_distance_travelled) > min_coll_distance)){ //This ensures we consider direction
+                        //Is this a collision worthy of a punt? #THE BASTARD LINE# - Get it wrong, collisions either don't happen, or you get "sucked behind" moving platforms!!
+                        if((combined_distance_travelled_corrected >= 0 && combined_distance_travelled_corrected >= min_coll_distance) || (combined_distance_travelled_corrected < 0 && (0-combined_distance_travelled_corrected) > min_coll_distance)){ //This ensures we consider direction
                             output.axis_move = collider_velocity_player[axis_dimension]*delta; //This is the vector displacement to punt the player
                             if(direction_component<0){ //It's gonna get flipped from a scalar to a vector so lets flip it first, so the flip back corrects it!!
                                 output.axis_move = output.axis_move * -1; 
                             }
                             //Transfer momentum to player
                             thisplayer.velocity[axis_dimension] = thisplayer.velocity[axis_dimension] + collider_velocity_player[axis_dimension]; 
-                            D("PUNT! SM:"+thisplayer.velocity.str()+" Pltf:"+collider_velocity_player.str());
+                            D("PUNT! ["+axis_dimension+"] SM:"+thisplayer.velocity.str()+" Pltf:"+collider_velocity_player.str());
                             
                             //Call the object's touched method:
                             try{
