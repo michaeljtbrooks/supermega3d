@@ -25,7 +25,7 @@
  * Edit the var level_number to explore levels 1-4!
  * 
  */
-var level_number = 4; //What level to start on (overridden by Sandbox if on. 1 to 4)
+var level_number = 3; //What level to start on (overridden by Sandbox if on. 1 to 4)
 
 var DEBUG = true; //Debug mode
 var level; //Where we'll store our level
@@ -140,9 +140,51 @@ var level_contents = {
             "start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
         },
         
-        //Level 3 is defined below (has some randomisation on each run)
+        3:{	//Level 3 = Ice rink gauntlet
+        	"platforms" : [
+        		//Main arena area
+        		{"name":"big_ice_rink", "size":[260,260,2], "position":[0,0,0], "preset":"ice_platform"},
+        		{"name":"start_spur", "size":[10,20,2], "position":[0,-140,0]},
+        		{"name":"rear_left_spur", "size":[20,8,2], "position":[-140,-126,0]},
+        		{"name":"rear_right_spur", "size":[20,8,2], "position":[140,-126,0]},
+        		{"name":"middle_left_spur", "size":[20,8,2], "position":[-140, 0,0]},
+        		{"name":"middle_right_spur", "size":[20,8,2], "position":[140,0,0]},
+        		{"name":"front_left_spur", "size":[20,8,2], "position":[-140,126,0]},
+        		{"name":"front_right_spur", "size":[20,8,2], "position":[140,126,0]},
+        		{"name":"end_spur", "size":[10,20,2], "position":[0,140,0]},
+        		//Nether bar:
+        		{"name":"netherbar", "size":[380,3,2], "position":[0,0,-12], "orientation":[0,0,DEG45], "preset":"ice_platform"},
+        		{"name":"netherbar_blocker", "size":[4,16,10], "position":[-10,-10,-7], "orientation":[0,0,DEG45], "colour": 0xAA8833, "translation_mode":"switched_off_reciprocating", "translation":[-5,5,0], "magnitude":20},
+        		{"name":"rl_steps", "size":[10,3,2], "position":[-140,-132,-6]},
+        		{"name":"fr_steps", "size":[10,3,2], "position":[140,132,-6]},
+        	],
+        	"noms" : [
+        		{"name":"rl", "position":[-147,-126, 3]},
+        		{"name":"rr", "position":[147,-126, 3]},
+        		{"name":"fl", "position":[-147, 126, 3]},
+        		{"name":"fr", "position":[147, 126, 3]},
+        		{"name":"nethernom", "position":[0, 0, -10]},
+        	],
+        	"switchers" : [
+        		{ //Centre right platform
+                    "position":[146,0,4], "target":"netherbar_blocker",
+                    "toggle_on": {"translation_mode":"reciprocating"},
+                    "toggle_off": {"translation_mode":"switched_off_reciprocating"},
+                },
+        	],
+        	"ends" : [
+                {"position":[0,146,3], "orientation":[0,0,0], "noms_required":5}, //The end  
+            ],
+        	"start_position": new THREE.Vector3(0,-146, 4),
+        	"start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
+        },
         
-        4:{ //Level 4 = Castle Park. A central castle tower with castle gardens 
+        
+        
+        //Level 4 is defined below (has some randomisation on each run)
+        4:{},
+        
+        5:{ //Level 5 = Castle Park. A central castle tower with castle gardens 
             "terrain":[
                 {"width":160, "depth":160, "width_vertices":32, "depth_vertices":32, "multiplier":0.25, "subtractor":0}
             ],
@@ -477,7 +519,7 @@ $.merge(tubular_hell.platforms, tubular_variable_configs[tubular_hell_mode].plat
 $.merge(tubular_hell.traps, tubular_variable_configs[tubular_hell_mode].traps); //Add in traps
 $.merge(tubular_hell.noms, tubular_variable_configs[tubular_hell_mode].noms); //Add in ends
 $.merge(tubular_hell.ends, tubular_variable_configs[tubular_hell_mode].ends); //Add in ends
-level_contents[3] = tubular_hell;
+level_contents[4] = tubular_hell;
 
 
 
@@ -1686,24 +1728,24 @@ function render() {
     // Get the time delta since last frame
     var delta = clock.getDelta();
 
-    // Animate the frame
-    animate(delta);
+    // Animate the frame (if not paused!! That way you don't chomp so many CPU cycles when idling!)
+    if(hasLock){
+    	animate(delta);
 
-    // Update metrics
-    stats.update();
-
-    // Simulate physics
-    scene.simulate(delta);
-
+	    // Update metrics
+	    stats.update();
+	
+	    // Simulate physics
+	    scene.simulate(delta);
     
-    // Render the background
-    if(level.background_scene){
-        renderer.render( level.background_scene, level.background_camera);
-    }
-
-    // Render the changes made this frame
-    renderer.render( scene, camera );
-    
+	    // Render the background
+	    if(level.background_scene){
+	        renderer.render( level.background_scene, level.background_camera);
+	    }
+	
+	    // Render the changes made this frame
+	    renderer.render( scene, camera );
+    }    
 
     // Request the next frame (endless)
     requestAnimationFrame( render );

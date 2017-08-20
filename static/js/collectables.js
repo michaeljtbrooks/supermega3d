@@ -189,6 +189,9 @@ SuperMega.OBJECT_PRESETS = {
         "multiplier": 0.1,
         "subtractor": 4,
     },
+    "moving_platform" : {
+    	"color" : 0xAA8833
+    }
 };
 
 
