@@ -3959,7 +3959,7 @@ SuperMega.Interactable.prototype.orientate = function(x_or_vector, y, z, amount,
         var y_rotation_amt = x_or_vector.y;
         var z_rotation_amt = x_or_vector.z;
         order = x_or_vector.order || order;
-    }else if(typeof x_or_vector == "Array"){ //Has been given an array to define rotation
+    }else if(x_or_vector.constructor === Array){ //Has been given an array to define rotation
         var x_rotation_amt = x_or_vector[0] || 0;
         var y_rotation_amt = x_or_vector[1] || 0;
         var z_rotation_amt = x_or_vector[2] || 0;
@@ -3978,6 +3978,21 @@ SuperMega.Interactable.prototype.orientate = function(x_or_vector, y, z, amount,
     this.__dirtyRotation = true;
     this.geometry.verticesNeedUpdate = true;
     return this;
+}
+SuperMega.Interactable.prototype.reposition = function(x_or_vector, y, z){
+    /**
+     * Changes the position of the object to a new position
+     * 
+     *  @param x,y,z
+     *       A single Vector3
+     *       or, a triple array
+     *       or, x,y,z as separate entities
+     *      
+     */
+	var vector_val = SuperMega.resolve_3d_entity("vector",x_or_vector,y,z);
+	D("Position changed to: "+vector_val.str());
+	this.position.set(vector_val.x, vector_val.y, vector_val.z);
+	this.__dirtyPosition = true;
 }
 SuperMega.Interactable.prototype.is_collectable = function(){
     /**
@@ -4484,7 +4499,8 @@ SuperMega.Switcher.prototype.touched = function(delta,player,level){
         D("Switcher Looking for '"+target_name+"'");
         D(target);
         if(!target && target_name != "__all__"){ //Bail if no named target matches (can use the all operator
-            return true; //aka continue 
+            D(target_name + " not found!");
+        	return true; //aka continue 
         };
         
         //Apply the "all objects" self.target_on / self.targed_off
@@ -4493,6 +4509,9 @@ SuperMega.Switcher.prototype.touched = function(delta,player,level){
             if(typeof target.ops[key] != "function"){ //Ensure we don't overwrite a function!
                 D("BEFORE SWITCH: "+target_name+".ops."+key+"="+target.ops[key]);
                 target.ops[key] = value; //Possible future upgrade: allow calling method target.key() with value as argument
+                //Deal with special properties which require special setting
+                if(key=="orientation"){target.orientate(value);} //Spin round
+                if(key=="position"){target.reposition(value);} //Move to new location
                 D("AFTER SWITCH: "+target_name+".ops."+key+"="+target.ops[key]);
             }
         });
@@ -4502,7 +4521,11 @@ SuperMega.Switcher.prototype.touched = function(delta,player,level){
         if(spec_to_apply){
             $.each(spec_to_apply, function(key,value){
                 if(typeof target.ops[key] != "function"){
+                	D("BEFORE SWITCH: "+target_name+".ops."+key+"="+target.ops[key]);
                     target.ops[key] = value; //Possible future upgrade: allow calling method target.key() with value as argument
+                    if(key=="orientation"){target.orientate(value);} //Spin round
+                    if(key=="position"){target.reposition(value);} //Move to new location
+                    D("AFTER SWITCH: "+target_name+".ops."+key+"="+target.ops[key]);
                 }
             });
         }

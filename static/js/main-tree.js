@@ -79,8 +79,9 @@ var DEG270 = Math.PI*3/2;
 var DEG315 = Math.PI+DEG45;
 var DEG360 = Math.PI*2;
 
-var level_contents = {
-        1:{ //Our first level
+var level_contents = {};
+
+level_contents[1] = { //Our first level
             "platforms" : [
                 {"size":[10,30,2], "position":[0,10,-5]}, //Flat start
                 {"size":[10,20,2], "position":[0,33,-0.5], "orientation":[DEG30,0,0]}, //Ramp up
@@ -107,9 +108,9 @@ var level_contents = {
             ],
             "start_position": new THREE.Vector3(0,0,2), //Where player starts
             "start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
-        },
+        };
         
-        2:{ //Level 2 = ice bridge
+level_contents[2] = { //Level 2 = ice bridge
             "platforms" : [
                 {"size":[10,10,2], "position":[0,0,1]}, //Flat start
                 {"size":[10,100,2], "position":[0,55,1], "preset":"ice_platform"}, //Long central ice platform
@@ -138,9 +139,10 @@ var level_contents = {
             ],
             "start_position": new THREE.Vector3(0,0,6), //Where player starts
             "start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
-        },
+        };
+
         
-        3:{	//Level 3 = Ice rink gauntlet
+level_contents[3] = {	//Level 3 = Ice rink gauntlet
         	"platforms" : [
         		//Main arena area
         		{"name":"big_ice_rink", "size":[260,260,2], "position":[0,0,0], "preset":"ice_platform"},
@@ -157,6 +159,7 @@ var level_contents = {
         		{"name":"netherbar_blocker", "size":[4,16,10], "position":[-10,-10,-7], "orientation":[0,0,DEG45], "colour": 0xAA8833, "translation_mode":"switched_off_reciprocating", "translation":[-5,5,0], "magnitude":20},
         		{"name":"rl_steps", "size":[10,3,2], "position":[-140,-132,-6]},
         		{"name":"fr_steps", "size":[10,3,2], "position":[140,132,-6]},
+        		//Switch blades are added on below
         	],
         	"noms" : [
         		{"name":"rl", "position":[-147,-126, 3]},
@@ -167,24 +170,73 @@ var level_contents = {
         	],
         	"switchers" : [
         		{ //Centre right platform
-                    "position":[146,0,4], "target":"netherbar_blocker",
-                    "toggle_on": {"translation_mode":"reciprocating"},
-                    "toggle_off": {"translation_mode":"switched_off_reciprocating"},
+                    "position":[146,0,4],
+                    "targets":["netherbar_blocker"], //We'll be adding our blades in here later
+                    "target_specific_toggle_on" : {
+                    	"netherbar_blocker": {"translation_mode":"reciprocating"},
+                    },
+                    "target_specific_toggle_off": {
+                    	"netherbar_blocker": {"translation_mode":"switched_off_reciprocating"},
+                    }
                 },
         	],
         	"ends" : [
                 {"position":[0,146,3], "orientation":[0,0,0], "noms_required":5}, //The end  
             ],
         	"start_position": new THREE.Vector3(0,-146, 4),
-        	"start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
-        },
-        
+        	"start_orientation" : new THREE.Euler(0,0,DEG180) //Turn around!!
+        };
+		//Add in the blades. I couldn't be bothered to write them all out longhand, so I did a loop
+		var switchblades = {"blade_0_2" : "fary_c", //Means far-y fixed, rotating clockwise when on
+							"blade_1_2" : "fary_c", 
+							"blade_2_2" : "fary_c",
+							"blade_3_2" : "fary_c",
+							"blade_4_2" : "fary_c"
+							}
+		var blade_length = 25.5;
+		var blade_width = 2;
+		for(var bx=0; bx<5; bx++) {
+			for(var by=0; by<10; by++) {
+				var posx = -130 + bx*26 + 12;
+				var posy = -130 + by*26 + 12;
+				var blade_name = "blade_"+bx+"_"+by;
+				var blade_position = [posx,posy,11];
+				var blade = {
+					"name" : blade_name,
+					"size" : [blade_width, blade_length, 20],
+					"position" : blade_position
+				};
+				//Apply the blade rotation rules:
+				var switch_rule = switchblades[blade_name];
+				if(switch_rule){
+					//Means this blade is a switchable kind!
+					blade["preset"] = "moving_platform";
+					var switch_off_settings = { //Ensure we can reset back. Copy old settings
+						"orientation" : [0,0,0],
+						"position" : blade["position"],
+					}
+					var switch_on_settings = {
+						"orientation" : [0,0,DEG90],
+					}
+					//Position is shifted depending on which side is pegged and which way we swing
+					if(switch_rule=="fary_c"){ //Position moves x-half length, y+half length
+						switch_on_settings["position"] = [posx-blade_length/2, posy+blade_length/2, blade_position[2]];
+					}
+					//##HERE## Finish these rotation rules
+					//Apply these rules to the FIRST switch
+					level_contents[3]["switchers"][0]["targets"].push(blade_name);
+					level_contents[3]["switchers"][0]["target_specific_toggle_on"][blade_name] = switch_on_settings;
+					level_contents[3]["switchers"][0]["target_specific_toggle_off"][blade_name] = switch_off_settings;
+				}
+				level_contents[3]["platforms"].push(blade); //Add onto our level creator
+			}
+		}
         
         
         //Level 4 is defined below (has some randomisation on each run)
-        4:{},
+level_contents[4] = {};
         
-        5:{ //Level 5 = Castle Park. A central castle tower with castle gardens 
+level_contents[5] = { //Level 5 = Castle Park. A central castle tower with castle gardens 
             "terrain":[
                 {"width":160, "depth":160, "width_vertices":32, "depth_vertices":32, "multiplier":0.25, "subtractor":0}
             ],
@@ -335,9 +387,8 @@ var level_contents = {
             "start_position": new THREE.Vector3(40,50,12), //Where player starts
             //"start_position": new THREE.Vector3(-30,-4,81), //tEST
             "start_orientation" : new THREE.Euler(0,0,-DEG45) //Face the cylinder
-        }
+        };
         
-};
 
 //Level 3 = Tubular hell
 /*
