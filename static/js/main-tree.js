@@ -159,6 +159,9 @@ level_contents[3] = {	//Level 3 = Ice rink gauntlet
         		{"name":"netherbar_blocker", "size":[4,16,10], "position":[-10,-10,-7], "orientation":[0,0,DEG45], "colour": 0xAA8833, "translation_mode":"switched_off_reciprocating", "translation":[-5,5,0], "magnitude":20},
         		{"name":"rl_steps", "size":[10,3,2], "position":[-140,-132,-6]},
         		{"name":"fr_steps", "size":[10,3,2], "position":[140,132,-6]},
+        		//End blocker
+        		{"name":"end_blocker", "size":[30,2,20], "position":[0,140,11], "preset":"moving_platform"}, //Starts in blocking position
+        		
         		//Switch blades are added on below
         	],
         	"noms" : [
@@ -168,15 +171,21 @@ level_contents[3] = {	//Level 3 = Ice rink gauntlet
         		{"name":"fr", "position":[147, 126, 3]},
         		{"name":"nethernom", "position":[0, 0, -10]},
         	],
+        	"powerups" : [
+                {"position":[-147,0,3]}, // Left central spur
+                {"position":[-52,-40,3]} // Blade 2.5,3
+            ],
         	"switchers" : [
         		{ //Centre right platform
                     "position":[146,0,4],
-                    "targets":["netherbar_blocker"], //We'll be adding our blades in here later
+                    "targets":["netherbar_blocker", "end_blocker"], //We'll be adding our blades in here later
                     "target_specific_toggle_on" : {
                     	"netherbar_blocker": {"translation_mode":"reciprocating"},
+                    	"end_blocker": {"position": [25,140,11]}, //Non-blocking pos
                     },
                     "target_specific_toggle_off": {
                     	"netherbar_blocker": {"translation_mode":"switched_off_reciprocating"},
+                    	"end_blocker": {"position": [0,140,11]},
                     }
                 },
         	],
@@ -191,21 +200,53 @@ level_contents[3] = {	//Level 3 = Ice rink gauntlet
 							"blade_1_2" : "fary_c", 
 							"blade_2_2" : "fary_c",
 							"blade_3_2" : "fary_c",
-							"blade_4_2" : "fary_c"
-							}
+							"blade_4_2" : "fary_c",
+							"blade_4_7" : "neary_c",
+							"blade_5_7" : "neary_c",
+							"blade_6_7" : "neary_c",
+							"blade_7_7" : "neary_c",
+							"blade_8_7" : "neary_c",
+							"blade_9_7" : "neary_c",
+							"blade_0_7" : "fary_c",
+							"blade_0_9" : "neary_c",
+							"blade_1_9" : "fary_ac",
+							"blade_2_8" : "neary_ac",
+							"blade_2_7" : "fary_ac",
+							"blade_3_4" : "neary_ac",
+							"blade_3_8" : "neary_c",
+							};
+		var absentblades = { //This is where there are "holes" in the rows of blades
+							"blade_5_2" : true,
+							"blade_6_5" : true,
+							"blade_7_0" : true,
+							"blade_8_2" : true,
+							"blade_9_6" : true,
+							"blade_1_6" : true,
+							"blade_3_9" : true,
+							};
 		var blade_length = 25.5;
 		var blade_width = 2;
-		for(var bx=0; bx<5; bx++) {
+		for(var bx=0; bx<10; bx++) {
 			for(var by=0; by<10; by++) {
-				var posx = -130 + bx*26 + 12;
-				var posy = -130 + by*26 + 12;
+				var posx = -130 + bx*26 + 12.5;
+				var posy = -130 + by*26 + 12.5;
 				var blade_name = "blade_"+bx+"_"+by;
-				var blade_position = [posx,posy,11];
+				//Correct for furthest blade (removes annoying little ledge at end)
+				var corr = 0;
+				if(by>=9){
+					corr = 1;
+				}
+				var blade_position = [posx,posy+(corr/2),11];
 				var blade = {
 					"name" : blade_name,
-					"size" : [blade_width, blade_length, 20],
+					"size" : [blade_width, blade_length+corr, 20],
 					"position" : blade_position
 				};
+				//Skip the absent blades
+				var missing_blade = absentblades[blade_name];
+				if(missing_blade){
+					continue; //Skip rest of loop
+				}
 				//Apply the blade rotation rules:
 				var switch_rule = switchblades[blade_name];
 				if(switch_rule){
@@ -221,6 +262,12 @@ level_contents[3] = {	//Level 3 = Ice rink gauntlet
 					//Position is shifted depending on which side is pegged and which way we swing
 					if(switch_rule=="fary_c"){ //Position moves x-half length, y+half length
 						switch_on_settings["position"] = [posx-blade_length/2, posy+blade_length/2, blade_position[2]];
+					}else if(switch_rule=="fary_ac"){ //Far y fixed, anticlockwise rotation
+						switch_on_settings["position"] = [posx+blade_length/2, posy+blade_length/2, blade_position[2]];
+					}else if(switch_rule=="neary_c"){ //Near y fixed, clockwise rotation
+						switch_on_settings["position"] = [posx+blade_length/2, posy-blade_length/2, blade_position[2]];
+					}else if(switch_rule=="neary_ac"){ //Near y fixed, anticlockwise rotation
+						switch_on_settings["position"] = [posx-blade_length/2, posy-blade_length/2, blade_position[2]];
 					}
 					//##HERE## Finish these rotation rules
 					//Apply these rules to the FIRST switch
