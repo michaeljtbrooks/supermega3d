@@ -104,9 +104,10 @@ level_contents[1] = { //Our first level
                 {"position":[-9.0,15.5,6.0]} //Can only get this by standing on pillar! 
             ],
             "ends" : [
-                {"position":[-68,46.5,42], "orientation":[0,0,DEG90], "noms_required":2}, //The end  
+                {"position":[-68,46.5,42], "orientation":[0,0,DEG90], "noms_required":5}, //The end  
             ],
             "start_position": new THREE.Vector3(0,0,2), //Where player starts
+            //"start_position": new THREE.Vector3(-55,46,44), //Test
             "start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
         };
         
@@ -1828,14 +1829,21 @@ function render() {
 
     // Animate the frame (if not paused!! That way you don't chomp so many CPU cycles when idling!)
     if(hasLock){
-    	animate(delta);
+    	
+        if(!level.complete){
+            //Animate items
+            animate(delta);
+            // Simulate physics
+            scene.simulate(delta);
+        }else{ //Level finished!! Spin camera around
+            player.rotateOnAxis( new THREE.Vector3(0,0,1), angleSpeed*delta);
+            player.__dirtyRotation = true;
+            player.__dirtyPosition = true;
+        }
 
 	    // Update metrics
 	    stats.update();
 	
-	    // Simulate physics
-	    scene.simulate(delta);
-    
 	    // Render the background
 	    if(level.background_scene){
 	        renderer.render( level.background_scene, level.background_camera);

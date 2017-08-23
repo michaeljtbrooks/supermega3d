@@ -523,12 +523,19 @@ SuperMega.Level.prototype._scene_action = function(action, obj, category_name, i
                     obj_index = tracker.indexOf(obj);
                 } else if(index_name){ //Else you can just supply its index if you know it!
                     obj_index = index_name;
+                    if(!obj){
+                        obj = tracker[index_name];
+                    };
                 } else {
                     console.log("WARNING: Level."+action+"(obj,"+category_name+",index_name) has not been given a valid object or index_name. Ignoring.");
+                    D(obj);
                     return false;
                 }
                 if (obj_index > -1) {
-                    D("Removing: "+obj.uuid);
+                    try{
+                        D("Removing: "+obj.uuid); //some objects don't have such id 
+                    }catch(err){
+                    }
                     tracker.splice(obj_index, 1); //Remove the item
                 }
             }
@@ -572,18 +579,21 @@ SuperMega.Level.prototype._scene_action = function(action, obj, category_name, i
         }
         
         //And add to / remove from the scene:
-        if(action=="add"){
-            this.scene.add(obj);
-        }else if(action=="remove"){
-            this.scene.remove(obj);
-        }
-        
-        //And add to /remove from the named_objects global var:
-        if(obj.name){ //Only applies to objects with names:
+        if(obj){
             if(action=="add"){
-                this.named_objects[obj.name] = obj;
-            } else if(action=="remove"){
-                delete this.named_objects[obj.name];
+                this.scene.add(obj);
+            }else if(action=="remove"){
+                D(obj);
+                D("Cat:"+category_name+" Index:"+index_name);
+                this.scene.remove(obj);
+            }
+            //And add to /remove from the named_objects global var:
+            if(obj.name){ //Only applies to objects with names:
+                if(action=="add"){
+                    this.named_objects[obj.name] = obj;
+                } else if(action=="remove"){
+                    delete this.named_objects[obj.name];
+                }
             }
         }
 };
@@ -803,6 +813,21 @@ SuperMega.Level.prototype.build = function(data){
         //Fix start position and rotation:
         this.start_position = data.start_position || ZERO_VECTOR3;
         this.start_orientation = data.start_orientation || ZERO_EULER;
+};
+SuperMega.Level.prototype.tear_down = function(){
+    /*
+     * Tears the level down, including all players
+     * 
+     * Calls scene.remove, thus freeing memory
+     */
+    var self = this;
+    var object_cats = ["lighting","collidables","interactables","terrain","liquid_terrain","debris","players"];
+    $.each(object_cats, function(index,object_cat){ //Iterate the categories
+        var category_items = self[object_cat].slice(); //Shallow-copy array so manipulating it in the loop won't fark it
+        $.each(category_items, function(obj_index,obj){ //Iterate the actual object!
+            self.remove(obj, object_cat, obj_index); //Deletes it from scene
+        });
+    });
 };
 SuperMega.Level.prototype.respawn = function(){
     /*
@@ -1419,16 +1444,35 @@ SuperMega.Level.prototype.add_terrain = function(options){
         return t;
         
 };
-SuperMega.Level.prototype.completed = function(player){
+SuperMega.Level.prototype.completed = function(player, end_obj){
     /**
      * Completes the level!
      * 
      * @param player: <SuperMega.Player> The player completing the level (will take local player as default)
+     * @param end_obj: <SuperMega.TheEnd> The end object that was hit
      */
-    // Flag as complete
-    this.complete = true;
     
-    // Tear down scene
+    //Do a little animation to spin the world around:
+    var self = this;
+    var object_cats = ["collidables","interactables","terrain","liquid_terrain","debris"];
+    $.each(object_cats, function(index,object_cat){ //Iterate the categories
+        var category_items = self[object_cat].slice(); //Shallow-copy array so manipulating it in the loop won't fark it
+        $.each(category_items, function(obj_index,obj){ //Iterate the actual object!
+            try{
+                if(end_obj){
+                    if(end_obj._physijs.id == obj._physijs.id){ //Means we're hitting this end!
+                        return; //Skip removing this end!
+                    }
+                }
+            }catch(err){ //Occurs when a .id doesn't exist on the object
+                //pass
+            }
+            self.remove(obj, object_cat); //Deletes it from scene
+        });
+    });
+    
+    // Flag as complete (tells the outer engine that we're done!)
+    this.complete = true;
 }
 
 
@@ -4258,7 +4302,16 @@ SuperMega.Nom.prototype = Object.assign( Object.create(SuperMega.Interactable.pr
  */
 SuperMega.TheEnd = function(options){
     options = options || {};
-    this.nom_threshold = options.noms_required || options.nom_threshold || 5; //Default 5 noms
+    
+    //Handle the special "noms_required" value which may be NONE
+    this.nom_threshold = options.noms_required;
+    if(typeof this.nom_threshold === "undefined"){
+        this.nom_threshold = options.nom_threshold;
+    }
+    if(typeof this.nom_threshold === "undefined"){ //Only default to 5 if not provided!
+        this.nom_threshold = 5;
+        D("No noms required specified!!!")
+    }
     
     //Build the shape
     var trapezium_geo = new THREE.CubeGeometry(6, 3, 3); //A flat large thing on its side
@@ -4301,7 +4354,7 @@ SuperMega.TheEnd = function(options){
     
     //Create the thing:
     SuperMega.Interactable.call( this, options ); //JS inheritance hack part 1
-    this.collectable = false; //Can't be collected (removed from scene)
+    this.collectable = false; //Can't be collected (removed from scene on contact)
     
     //Jubb up the geometry
     this.geometry.dynamic = true; //We're going to dick about with this
@@ -4312,6 +4365,20 @@ SuperMega.TheEnd = function(options){
     //End have shadows
     this.castShadow = true;
     this.receiveShadow = false;
+    
+    //Ends may have zero noms_required, meaning active at start
+    if(this.nom_threshold<1){ //Make solid
+        this.state = true; //Active
+        this.material.opacity = 1;
+        this.material.wireframe = false;
+        var the_end_container = this; //Allows us to grab this in our loop of daughter meshes.
+        $.each(this.contains, function(index, obj){ //Iterate the daughter meshes (cylinder)
+            obj.material.opacity = the_end_container.material.opacity;
+            obj.material.wireframe = the_end_container.material.wireframe;
+            obj.material.needsUpdate;
+        });
+    }
+    
 }
 SuperMega.TheEnd.prototype = Object.assign( Object.create(SuperMega.Interactable.prototype), {
     constructor: SuperMega.TheEnd,
@@ -4328,7 +4395,7 @@ SuperMega.TheEnd.prototype = Object.assign( Object.create(SuperMega.Interactable
         if(player.noms >= this.nom_threshold){ //Means it's active 
             //TODO: Level End routine
             console.log("LEVEL FINISHED!! W00T!!");
-            level.completed(player); //Run the level complete sequence
+            level.completed(player, this); //Run the level complete sequence
         }
     },
     collect : function(delta, player, level){return this.touched(delta,player,level);},
