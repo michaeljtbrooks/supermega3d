@@ -294,8 +294,7 @@ SuperMega.resolve_3d_entity = function(entity, x_or_vector, y, z, order){
         y_amt = y || 0;
         z_amt = z || 0;
     }
-    
-    D("Resolved "+entity+": "+x_amt+","+y_amt+","+z_amt+" ("+order+")");
+    //D("Resolved "+entity+": "+x_amt+","+y_amt+","+z_amt+" ("+order+")");
     
     if(entity=="euler"){ //Return a euler
         return new THREE.Euler(x_amt, y_amt, z_amt, order);
@@ -355,6 +354,10 @@ SuperMega.Screen.prototype = Object.assign( {}, {
  */
 SuperMega.Level = function( scene, level_number, options){
     /** Level Constructor
+     * 
+     * This creates the arena capable of holding a level. The *contents* of the
+     * level are not built until you call level.build()
+     * 
      * @param scene: The Physijs scene we are using
      * @keyword level_number: Will load the specified level number into the scene
      * @keyword options: {} properties of the level (e.g. world width etc)
@@ -383,6 +386,11 @@ SuperMega.Level = function( scene, level_number, options){
     //Generate background:
     this.create_background(options.background || {});
     
+    //Let there be light:
+    this.build_lighting(options.day_night || false);
+    
+    //##HERE## Decide what to do with the camera!
+   
 }
 SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype), {
     constructor: SuperMega.Level,
@@ -427,7 +435,12 @@ SuperMega.Level.prototype.create_background = function(options){
     //Process inputs
     options = options || {};
     options.image = options.image || null;
-    options.colour = options.colour || options.color || "sky"; //Default to sky blue
+    //Colour may legitimately be black! (0)
+    if(typeof options.colour == "undefined" && typeof options.color == "undefined"){
+        options.colour = "sky"; //Default to sky blue
+    }else{
+        options.colour = options.colour || options.color;
+    }
     
     
     //Parse options
@@ -617,6 +630,89 @@ SuperMega.Level.prototype.remove = function(obj,category_name,index_name){
          */
         return this._scene_action("remove",obj,category_name,index_name);
 };
+SuperMega.Level.prototype.build_lighting = function(day_night){
+    /**
+     * Creates the lighting for the level
+     * 
+     * @param day_night: <Boolean> Whether day_night cycles or not
+     */
+    //Resolve inputs:
+    if(typeof day_night == "undefined"){
+        day_night = false; //default to no cycling
+        this.day_night = day_night; //Store as object var so we can animate lighting rotation
+    }
+    
+    
+    //Background general ambient light
+    ambient = new THREE.AmbientLight( 0x909090, 0.6 );
+    this.add(ambient,"lighting","ambient");
+    
+    //Main directional sunlight
+    light = new THREE.DirectionalLight( 0xffe0bb, 0.6 );
+    light2 = new THREE.DirectionalLight( 0xffe0bb, 0.6 );
+    light.castShadow = true;
+    light2.castShadow = false;
+    
+    // Update the shadow cameras
+    light.shadow.camera.near = -256;
+    light.shadow.camera.far = 256;
+    light.shadow.camera.left = -128;
+    light.shadow.camera.right = 128;
+    light.shadow.camera.top = 128;
+    light.shadow.camera.bottom = -128;
+    // Other shadow settings:
+    light.shadow.bias = .0001;  // 0.0001
+    light.shadow.mapSize.width = 512; //Fixed constants
+    light.shadow.mapSize.height = 512;
+    
+    //Attach lights to lighting rig:
+    lightRig = new THREE.Object3D();
+    lightRig.boundRadius = 10;
+    lightRig.add(light);
+    lightRig.add(light2);
+    
+    //Start at noon if lights not rotating
+    if(!this.day_night){
+        lightRig.rotation.y = 0-DEG90; //90deg
+    }
+    
+    // Offset the lights in the rig
+    light.position.set( 10, 0, 0 );
+    light2.position.set(0, 0, 10 );
+    lightRig.rotation.x = 0.6807; // Emulate middle of northern hemisphere ~39deg N latitude
+    
+    // Add the lights to the scene
+    this.add( lightRig, "lighting", "rig" );
+    
+    //Add the moon (if required)
+    if(this.day_night){
+        this.add_moon();
+    }
+}
+SuperMega.Level.prototype.add_moon = function(){
+    /**
+     * Adds a moon to the scene. Should only be used if day_night cycling is operational
+     * Moon light to make the "night time" not totally unplayable
+     * Stays active during the day too, so essentialyl 3 lights are active 
+     * during they day cycle
+     */
+    moon = new THREE.DirectionalLight( 0x999999, 0.2 );
+    
+    //Configure shadows
+    moon.castShadow = true;
+    moon.shadow.camera.near = -256;
+    moon.shadow.camera.far = 256;
+    moon.shadow.camera.left = -128;
+    moon.shadow.camera.right = 128;
+    moon.shadow.camera.top = 128;
+    moon.shadow.camera.bottom = -128;
+    
+    // Set the moon overhead position
+    moon.position.set(0, 0, 10 );
+    moon.lookAt(0, 0, 0);
+    
+    this.add( moon, "lighting", "moon" );
+}
 SuperMega.Level.prototype.recompile_obstacles = function(){
     /**
      * Simply compounds collidables and terrain into same array:
@@ -735,12 +831,19 @@ SuperMega.Level.prototype.build = function(data){
         data.debris = data.debris || [];
         data.switchers = data.switchers || data.switches || [];
         data.ends = data.ends || data.end || [];
+        data.day_night = data.day_night || false; //Day-night cycles
         
         //Store a deepcopy:
         var self = this; //Allows us to reference this in the jQuery each loops
         this.level_data = deepclone(data);
         console.log("level_data");
         console.log(this.level_data);
+        
+        //Update the day_night rule with the level settings:
+        this.day_night = data.day_night;
+        if(this.day_night && !this.lighting["moon"]){
+            this.add_moon();
+        }
         
         //Build terrains
         $.each(data.terrain, function(index,options){
@@ -3031,22 +3134,23 @@ SuperMega.Player.prototype.make_sprite = function(options){
         options.nickname = options.nickname || this.nickname;
         options.hp = options.hp || this.hp;
         
-            // Init canvas and drawing sizes, offsets, etc
-            var canvas = document.createElement('canvas'),
-                context = canvas.getContext('2d'),
-                size = 512,
-                hpSize = 100,
-                hpOffset = 20,
-                hpWidth = Math.max(0, Math.round(options.hp)),
-                hpHeight = 10,
-                fontSize = 24,
-                paddingHeight = 10,
-                paddingWidth = 10;
-    
-            // Assign height/width from setup
-            canvas.width = size;
-            canvas.height = size;
-            
+        // Init canvas and drawing sizes, offsets, etc
+        var canvas = document.createElement('canvas'),
+            context = canvas.getContext('2d'),
+            size = 512,
+            hpSize = 100,
+            hpOffset = 20,
+            hpWidth = Math.max(0, Math.round(options.hp)),
+            hpHeight = 10,
+            fontSize = 24,
+            paddingHeight = 10,
+            paddingWidth = 10;
+
+        // Assign height/width from setup
+        canvas.width = size;
+        canvas.height = size;
+        
+        if(!this.local){ //Only show the name if a remote player
             // DRAW NAME BACKGROUND AND NAME
             context.textAlign = 'center';
             context.font = fontSize+'px Arial';
@@ -3064,43 +3168,44 @@ SuperMega.Player.prototype.make_sprite = function(options){
             // Draw text
             context.fillStyle = '#ffffff';
             context.fillText(options.nickname, size / 2, size / 2);
+        }
 
-            // DRAW HP BARS
-            // Red underlay
-            context.fillStyle = "rgba(204, 31, 31, 1)";
-            context.fillRect(
-                size/2 - hpSize/2,
-                size/2 - hpHeight/2 + hpOffset,
-                hpSize,
-                hpHeight
-            );
-    
-            // Green overlay
-            context.fillStyle = "rgba(16, 189, 0, 1)";
-            context.fillRect(
-                size/2 - hpSize/2,
-                size/2 - hpHeight/2 + hpOffset,
-                hpWidth,
-                hpHeight
-            );
-    
-            // Create a new texture from the canvas drawing
-            var canvasTexture = new THREE.Texture(canvas);
-            canvasTexture.needsUpdate = true;
-    
-            // Assign the texture to a new material
-            var sprite_material = new THREE.SpriteMaterial({
-                map: canvasTexture,
-                transparent: false,
-                useScreenCoordinates: false,
-                color: 0xffffff // CHANGED
-            });
-    
-            // Create and return a fancy new player sprite
-            var sprite = new THREE.Sprite(sprite_material);
-            sprite.scale.set( 10, 10, 1 );
-            this.sprite = sprite; //Store in object
-            return sprite;
+        // DRAW HP BARS
+        // Red underlay
+        context.fillStyle = "rgba(204, 31, 31, 1)";
+        context.fillRect(
+            size/2 - hpSize/2,
+            size/2 - hpHeight/2 + hpOffset,
+            hpSize,
+            hpHeight
+        );
+
+        // Green overlay
+        context.fillStyle = "rgba(16, 189, 0, 1)";
+        context.fillRect(
+            size/2 - hpSize/2,
+            size/2 - hpHeight/2 + hpOffset,
+            hpWidth,
+            hpHeight
+        );
+
+        // Create a new texture from the canvas drawing
+        var canvasTexture = new THREE.Texture(canvas);
+        canvasTexture.needsUpdate = true;
+
+        // Assign the texture to a new material
+        var sprite_material = new THREE.SpriteMaterial({
+            map: canvasTexture,
+            transparent: false,
+            useScreenCoordinates: false,
+            color: 0xffffff // CHANGED
+        });
+
+        // Create and return a fancy new player sprite
+        var sprite = new THREE.Sprite(sprite_material);
+        sprite.scale.set( 10, 10, 1 );
+        this.sprite = sprite; //Store in object
+        return sprite;
 };
 SuperMega.Player.prototype.update_sprite = function(){
         /**

@@ -25,7 +25,7 @@
  * Edit the var level_number to explore levels 1-4!
  * 
  */
-var level_number = 3; //What level to start on (overridden by Sandbox if on. 1 to 4)
+var level_number = 1; //What level to start on (overridden by Sandbox if on. 1 to 4)
 
 var DEBUG = true; //Debug mode
 var level; //Where we'll store our level
@@ -87,10 +87,10 @@ level_contents[1] = { //Our first level
                 {"size":[10,20,2], "position":[0,33,-0.5], "orientation":[DEG30,0,0]}, //Ramp up
                 {"size":[3,3,10], "position":[-10,15,-0.5], "orientation":[0,0,0], "translation":[10,5,0], "translation_mode":"reciprocating", "magnitude":20}, //Moving pillar
                 {"size":[20,10,2], "position":[5,46.5,4.5], "orientation":[0,0,0]}, //Higher horizontal
-                {"size":[10,10,2], "position":[30,46.5,-0.5], "orientation":[0,0,0], "translation":[0,0,10], "translation_mode":"reciprocating", "magnitude":50}, //Vertical lift
+                {"size":[10,10,2], "position":[30,46.5,-0.5], "orientation":[0,0,0], "translation":[0,0,10], "translation_mode":"reciprocating", "magnitude":50, "preset":"moving_platform"}, //Vertical lift
                 {"size":[20,10,2], "position":[5,46.5,40], "orientation":[0,0,0]}, //Upper storey horizontal
-                {"size":[10,10,2], "position":[-10,56.5,40], "orientation":[0,0,0], "translation":[0,-10,0], "translation_mode":"reciprocating", "magnitude":20}, //Upper storey sideways moving platform
-                {"size":[10,10,2], "position":[-20,36.5,40], "orientation":[0,0,0], "translation":[0,10,0], "translation_mode":"reciprocating", "magnitude":20}, //Upper storey sideways moving platform #2
+                {"size":[10,10,2], "position":[-10,56.5,40], "orientation":[0,0,0], "translation":[0,-10,0], "translation_mode":"reciprocating", "magnitude":20, "preset":"moving_platform"}, //Upper storey sideways moving platform
+                {"size":[10,10,2], "position":[-20,36.5,40], "orientation":[0,0,0], "translation":[0,10,0], "translation_mode":"reciprocating", "magnitude":20, "preset":"moving_platform"}, //Upper storey sideways moving platform #2
                 {"size":[40,10,2], "position":[-50,46.5,40], "orientation":[0,0,0]}, //Upper storey horizontal to end
             ],
             "traps" : [
@@ -104,11 +104,11 @@ level_contents[1] = { //Our first level
                 {"position":[-9.0,15.5,6.0]} //Can only get this by standing on pillar! 
             ],
             "ends" : [
-                {"position":[-68,46.5,42], "orientation":[0,0,DEG90], "noms_required":5}, //The end  
+                {"position":[-68,46.5,42], "orientation":[0,0,DEG90], "noms_required":2}, //The end  
             ],
             "start_position": new THREE.Vector3(0,0,2), //Where player starts
             //"start_position": new THREE.Vector3(-55,46,44), //Test
-            "start_orientation" : new THREE.Euler(0,0,Math.PI) //Turn around!!
+            "start_orientation" : new THREE.Euler(0,0,Math.PI), //Turn around!! 
         };
         
 level_contents[2] = { //Level 2 = ice bridge
@@ -861,7 +861,7 @@ if ( havePointerLock ) {
 } else {
 
     // Pointer lock not supported to show a "yer browser sux" message
-    instructions.innerHTML = 'Your browser doesn\'t seem to support Pointer Lock API - Try Google Chrome, or Firefox';
+    instructions.innerHTML = 'Your browser doesn\'t seem to support Pointer Lock API - Try <a href="https://www.google.co.uk/chrome/browser/desktop/index.html" title="Get Google Chrome">Google Chrome</a>';
 
 }
 //IF debug mode, automatically start:
@@ -1011,80 +1011,80 @@ function init() {
     //
     // LIGHTS
     //
-
-    // Ambient light is 60%
-    ambient = new THREE.AmbientLight( 0x909090, 0.6 );
-    level.add(ambient,"lighting","ambient"); //Adds to the level therefore the scene
-
-    // Sun lights (two of them for fun reflective patterns
-    // This achieves the appearance/art style I'm going for
-    light = new THREE.DirectionalLight( 0xffe0bb, 0.6 );
-    light2 = new THREE.DirectionalLight( 0xffe0bb, 0.6 );
-
-    // Moon light to make the "night time" not totally unplayable
-    // Stays active during the day too, so essentialyl 3 lights are active
-    // during they day cycle
-    moon = new THREE.DirectionalLight( 0x999999, 0.2 );
-
-    // Only the main daylight and moon cast shadows
-    light.castShadow = true;
-    light2.castShadow = false;
-    moon.castShadow = true;
-
-    // Update the shadow cameras
-    light.shadow.camera.near = -256;
-    light.shadow.camera.far = 256;
-    light.shadow.camera.left = -128;
-    light.shadow.camera.right = 128;
-    light.shadow.camera.top = 128;
-    light.shadow.camera.bottom = -128;
-
-    moon.shadow.camera.near = -256;
-    moon.shadow.camera.far = 256;
-    moon.shadow.camera.left = -128;
-    moon.shadow.camera.right = 128;
-    moon.shadow.camera.top = 128;
-    moon.shadow.camera.bottom = -128;
-
-    // Don't show the wire lines of the lights
-    // Good for debugging, though (now defaults to absence in r85.2)
-    //light.shadowCameraVisible = false;
-    //light2.shadowCameraVisible = false;
-    //moon.shadowCameraVisible = false;
-
-    // More shadow configs
-    light.shadow.bias = .0001;  // 0.0001
-    //light.shadowDarkness = 0.25; // 0.5
-    //moon.shadowDarkness = 0.2;
-    light.shadow.mapSize.width = SHADOW_MAP_WIDTH;
-    light.shadow.mapSize.height = SHADOW_MAP_HEIGHT;
-
-    // Create a light rig so lights rotate in tandum, relative to the core object
-    lightRig = new THREE.Object3D();
-    lightRig.boundRadius = 10;
-    lightRig.add(light);
-    lightRig.add(light2);
+    if(false){
+        // Ambient light is 60%
+        ambient = new THREE.AmbientLight( 0x909090, 0.6 );
+        level.add(ambient,"lighting","ambient"); //Adds to the level therefore the scene
     
-    //Set at noon if pauseRotation is on
-    if(pauseRotation){
-	lightRig.rotation.y = 0-(Math.PI/2); //90deg
+        // Sun lights (two of them for fun reflective patterns
+        // This achieves the appearance/art style I'm going for
+        light = new THREE.DirectionalLight( 0xffe0bb, 0.6 );
+        light2 = new THREE.DirectionalLight( 0xffe0bb, 0.6 );
+    
+        // Moon light to make the "night time" not totally unplayable
+        // Stays active during the day too, so essentialyl 3 lights are active
+        // during they day cycle
+        moon = new THREE.DirectionalLight( 0x999999, 0.2 );
+    
+        // Only the main daylight and moon cast shadows
+        light.castShadow = true;
+        light2.castShadow = false;
+        moon.castShadow = true;
+    
+        // Update the shadow cameras
+        light.shadow.camera.near = -256;
+        light.shadow.camera.far = 256;
+        light.shadow.camera.left = -128;
+        light.shadow.camera.right = 128;
+        light.shadow.camera.top = 128;
+        light.shadow.camera.bottom = -128;
+    
+        moon.shadow.camera.near = -256;
+        moon.shadow.camera.far = 256;
+        moon.shadow.camera.left = -128;
+        moon.shadow.camera.right = 128;
+        moon.shadow.camera.top = 128;
+        moon.shadow.camera.bottom = -128;
+    
+        // Don't show the wire lines of the lights
+        // Good for debugging, though (now defaults to absence in r85.2)
+        //light.shadowCameraVisible = false;
+        //light2.shadowCameraVisible = false;
+        //moon.shadowCameraVisible = false;
+    
+        // More shadow configs
+        light.shadow.bias = .0001;  // 0.0001
+        //light.shadowDarkness = 0.25; // 0.5
+        //moon.shadowDarkness = 0.2;
+        light.shadow.mapSize.width = SHADOW_MAP_WIDTH;
+        light.shadow.mapSize.height = SHADOW_MAP_HEIGHT;
+    
+        // Create a light rig so lights rotate in tandum, relative to the core object
+        lightRig = new THREE.Object3D();
+        lightRig.boundRadius = 10;
+        lightRig.add(light);
+        lightRig.add(light2);
+        
+        //Set at noon if pauseRotation is on
+        if(pauseRotation){
+    	lightRig.rotation.y = 0-(Math.PI/2); //90deg
+        }
+    
+        // Add the lights to the scene
+        level.add( lightRig, "lighting", "rig" );
+        level.add( moon, "lighting", "moon" );
+    
+        // Offset the lights in the rig
+        light.position.set( 10, 0, 0 );
+        light2.position.set(0, 0, 10 );
+    
+        // Set the moon overhead position
+        moon.position.set(0, 0, 10 );
+        moon.lookAt(0, 0, 0);
+    
+        // Set the light rig's initial rotation
+        lightRig.rotation.x = 0.6807; // middle of northern hemisphere ~39deg N latitude
     }
-
-    // Add the lights to the scene
-    level.add( lightRig, "lighting", "rig" );
-    level.add( moon, "lighting", "moon" );
-
-    // Offset the lights in the rig
-    light.position.set( 10, 0, 0 );
-    light2.position.set(0, 0, 10 );
-
-    // Set the moon overhead position
-    moon.position.set(0, 0, 10 );
-    moon.lookAt(0, 0, 0);
-
-    // Set the light rig's initial rotation
-    lightRig.rotation.x = 0.6807; // middle of northern hemisphere ~39deg N latitude
-
     //
     // RENDERER
     //
@@ -1756,7 +1756,7 @@ function createScene(data) {
     player.on_collision(level, function(){}); //What happens when the player collides with stuff
 
     // Init the player's sprite
-    updatePlayerSprite(playerId);
+    player.update_sprite();
 
     // Set initial x/y, given from the server (or level config)
     player.position.x = start_position.x;
@@ -3656,7 +3656,7 @@ function updatePlayerSprite(id) {
         }
 
         // Create a new sprite
-        p.sprite = makePlayerSprite(p.nickname, p.hp );
+        p.sprite = p.make_sprite({"nickname":p.nickname, "hp":p.hp});
 
         // Offset the sprite above the player
         p.sprite.position.set(0, 0, 2);
