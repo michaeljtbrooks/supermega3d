@@ -5,7 +5,7 @@
  *
  * @author Kevin Fitzgerald / @kftzg / http://kevinfitzgerald.net
  * @author Dr Michael Brooks / @michaeljtbrooks
- * Last Updated: 2017-06-04 19:59 UTC 
+ * Last Updated: 2017-08-25 21:33 UTC 
  *
  * Copyright 2013 Kevin Fitzgerald + 2017 Michael Brooks
  *
@@ -25,7 +25,7 @@
  * Edit the var level_number to explore levels 1-4!
  * 
  */
-var level_number = 1; //What level to start on (overridden by Sandbox if on. 1 to 4)
+var level_number = 5; //What level to start on (overridden by Sandbox if on. 1 to 4)
 
 var DEBUG = true; //Debug mode
 var level; //Where we'll store our level
@@ -1736,7 +1736,7 @@ function createScene(data) {
     // Point the camera at the player
     // FIXME: Change this to point where the player is looking instead of at the player directly
     //camera.lookAt(scene.position);
-    camera.lookAt(player.position);
+    camera.lookAt(player.position.x, player.position.y, player.position.z+3);
 
     // Determine the initial rotational offset based on radius, angle and scale
     var cameraOffset = new THREE.Vector3(0,0,0),
@@ -2240,7 +2240,7 @@ function onMouseMove(e) {
 
     // Look at the player model
     // FIXME: Should change this to look in the direction the player is looking
-    camera.lookAt(new THREE.Vector3(0,0,0));
+    camera.lookAt(new THREE.Vector3(0,0,3));
 
     // Update the new chase angle
     chaseAngle = newAngle;
@@ -2667,7 +2667,6 @@ function addBall(position, force, restitution, playerId, color, ballId) {
 function throwBall() {
 
     // Abandon this request if the player has met or exceeded their ball limit
-    //TODO: (or has no powerups!)
     if (currentBallCount >= maxBallCount) {
         return;
     }

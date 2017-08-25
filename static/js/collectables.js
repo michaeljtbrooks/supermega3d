@@ -141,7 +141,7 @@ var USE_PHYSIJS_FOR_PLAYER = false;
 
 
 //SuperMega Namespace
-window.SuperMega = {};
+window.SuperMega = window.SuperMega || {};
 
 //Our default colours in 0xHEX
 SuperMega.DEFAULT_COLOURS = {
@@ -316,12 +316,11 @@ SuperMega.resolve_euler = function(x_or_vector, y, z){
  * 
  * Contains the level, HUD notifications, overlays etc
  * 
- * @keyword level: The SuperMega.Level scene
  */
-SuperMega.Screen = function(level){
+SuperMega.Screen = function(){
     
     //If level, add it
-    this.level = level || null;
+    this.play_window = $();
     
     //Identify our overlays 
     this.overlays = { //Contains our various overlay screens
@@ -344,6 +343,90 @@ SuperMega.Screen.prototype = Object.assign( {}, {
 
 
 
+SuperMega.Camera = function(play_window){
+    /**
+     * Creates a camera with the correct presets for the game
+     * Inherits <THREE.PerspectiveCamera>
+     * 
+     * @keyword play_window: The HTML element containing the game element. Defaults to window
+     */
+    play_window = play_window || window;
+
+    
+    //Settings:
+    var screen_WIDTH = window.innerWidth;
+    var screen_HEIGHT = window.innerHeight;
+    var camera_NEAR = 1;
+    var camera_FAR = 2000;
+    var cameraOffset = new THREE.Vector3(0,0,4);
+    var chase_angle = 0; //What direction the camera is shooting at
+    var chase_scale = 5.5; //How Zoomed in the player is
+    
+    //Super to create camera:
+    THREE.PerspectiveCamera.call(this, 45, screen_WIDTH / screen_HEIGHT, camera_NEAR, camera_FAR);
+    var camera = this; //we can now call it a camera!
+    
+    // I'm being "that guy" and changing the world orientation such that
+    // X,Y are the top-down coordinates, and Z is the height off the ground
+    // Sorry in advance.
+    camera.up.y = 0;
+    camera.up.z = 1;
+};
+SuperMega.Camera.prototype = Object.assign( Object.create(Physijs.Scene.prototype), {
+    constructor: SuperMega.Camera,
+    _local_player: null, //Where we store our local player
+    LOOK_AT_RELATIVE: new THREE.Vector3(0,0,3), //Where the camera is pointing relative to what it is rigged to
+    chaseCamEnabled: false  //Whether the camera is chasing the player (??)
+});
+SuperMega.Camera.prototype.resize = function(play_window){
+    /**
+     * Handles resizing of the screen
+     * 
+     * @keyword play_window: The HTML element containing the game element. Defaults to window
+     */
+    play_window = play_window || window;
+    var screen_WIDTH = play_window.innerWidth;
+    var screen_HEIGHT = play_window.innerHeight;
+    this.aspect = screen_WIDTH / screen_HEIGHT;
+    this.updateProjectionMatrix();
+};
+SuperMega.Camera.prototype.rig_to_player = function(player){
+    /**
+     * Rigs the camera to the specified player.
+     * 
+     *  @param player: <SuperMega.Player> The Local player
+     */
+    var camera = this; //Alias, makes it quicker to port code
+    if(camera._local_player){
+        camera.unrig(); //Removes it from the existing player
+    }
+    
+    // Rig the camera to the player, so that the camera always moves relative to the player
+    player.add_camera(camera);
+    
+    // Point the camera at the player
+    // FIXME: Change this to point where the player is looking instead of at the player directly
+    camera.lookAt(player.position);
+    
+    // Determine the initial rotational offset based on radius, angle and scale
+    var cameraOffset = new THREE.Vector3(0,0,0);
+    var radius = Math.sqrt((3 * camera.chase_scale) * (3 * camera.chase_scale) + (1 * camera.chase_scale) * (1 * camera.chase_scale));
+    var normalizedCameraPos = camera.position.clone().sub(cameraOffset).normalize().multiplyScalar(radius);
+    var chaseAngle = Math.asin((normalizedCameraPos.z) / radius);
+    camera.chase_angle = chaseAngle; //Store obj wide
+    camera.chaseCamEnabled = true;
+};
+SuperMega.Camera.prototype.unrig = function(){
+    /**
+     * Removes the camera from the local player it is currently
+     * rigged to
+     */
+    var camera = this;
+    var player = camera._local_player;
+    player.remove_camera(camera);
+    camera.chaseCamEnabled = false;
+};
+
 
 /**
  * Level: A wrapper around scene to hold our global scene objects in
@@ -357,6 +440,9 @@ SuperMega.Level = function( scene, level_number, options){
      * 
      * This creates the arena capable of holding a level. The *contents* of the
      * level are not built until you call level.build()
+     * 
+     * You should only put stuff here that is not going to change from level
+     * to level.
      * 
      * @param scene: The Physijs scene we are using
      * @keyword level_number: Will load the specified level number into the scene
@@ -386,10 +472,8 @@ SuperMega.Level = function( scene, level_number, options){
     //Generate background:
     this.create_background(options.background || {});
     
-    //Let there be light:
+    //Let there be light:- This will need to be moved if we want to change lighting between levels
     this.build_lighting(options.day_night || false);
-    
-    //##HERE## Decide what to do with the camera!
    
 }
 SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype), {
@@ -1677,6 +1761,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
     maxBallCount: 0, //Number of balls allowed in play in total
     standing_on_velocity: null, //The velocity of the platform you are standing on
     mu: 0.5, //The friction of the surface you are standing on
+    camera: null,   //Where we rig the camera to (if the local player)
     
     
     //Ray storers
@@ -1697,6 +1782,146 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
     debug_rays: {}
 });
 //Methods:
+SuperMega.Player.prototype.add_camera = function(camera){
+    /**
+     * Adds the camera to this player
+     */
+    if(this.camera){ //Remove the old camera first
+        this.remove_camera();
+    }
+    this.camera = camera; //Store a pointer to it
+    this.add(camera);
+};
+SuperMega.Player.prototype.remove_camera = function(){
+    /**
+     * Removes the camera from this player
+     */
+    var old_camera = this.camera;
+    this.remove(this.camera);
+    this.camera = null;
+    return old_camera;
+}
+SuperMega.Player.prototype.mouse_move = function(e){
+    /**
+     * Updates the player's orientation according to the mouse movement.
+     * Requires a camera to be rigged to the player.
+     * 
+     * It is assumed that you have already checked whether the pointer
+     * has its lock before calling this!
+     * 
+     * @param e: The mouse movement event
+     */
+    if(!this.camera){ //Do nothing if no camera
+        return false;
+    }
+    
+    var player = this;
+    var camera = player.camera;
+    // Get the X/Y movement, and do a bunch of MATHS!
+    var movementX = e.movementX || e.mozMovementX || e.webkitMovementX || 0;
+    var movementY = e.movementY || e.mozMovementY || e.webkitMovementY || 0;
+    var playerHorizontalAngleSpeed = Math.PI / 180 * -movementX*0.5;
+    var radius = Math.sqrt((3 * camera.chase_scale) * (3 * camera.chase_scale) + (1 * camera.chase_scale) * (1 * camera.chase_scale));
+    var currAngle = camera.chase_angle;
+    var angleDiff = (movementY / 25)*0.5 / radius;
+    var newAngle = Math.max(-1.5, Math.min(1.5, currAngle + angleDiff));
+    var x = Math.cos(newAngle) * radius;
+    var y = Math.sqrt(radius * radius - x * x);
+    
+    // Invert y if angle is negative
+    y = newAngle > 0 ? y : -y;
+    // Cap x so that the camera cannot go past the centre of the player model
+    x = Math.max(x, 0.5);
+    
+    // Rotate the camera based on any horizontal movement (easy)
+    player.rotateOnAxis( new THREE.Vector3(0,0,1), playerHorizontalAngleSpeed ); //Physically turns the player box
+    player.rotateVelocity(playerHorizontalAngleSpeed); //Shifts existing velocity so you carry on sliding in same absolute direction
+    
+    // Update camera position for vertical adjustments
+    camera.position.set(camera.position.x, x, y);
+    camera.position.add(camera.cameraOffset);
+    camera.lookAt(camera.LOOK_AT_RELATIVE); //Ensure we keep looking above player
+    
+    //Update my existing position and trackers:
+    camera.chase_angle = newAngle;
+    player.__dirtyRotation = true; //Ensure new position is seen
+    player.__dirtyPosition = true;
+    
+    //You should broadcast the new position of the player!!
+    return player.get_broadcast_position();
+}
+SuperMega.Player.prototype.mouse_scroll = function(event, delta, deltaX, deltaY){
+    /**
+     * Updates the camera's position so it is zooming in or out.
+     * Requires a camera to be rigged to the player.
+     * 
+     * It is assumed that you have already checked whether the pointer
+     * has its lock before calling this!
+     * 
+     * @param event: The mouse scroll event
+     * @param delta - Wheel delta object
+     * @param deltaX - Horizontal delta
+     * @param deltaY - Vertical delta
+     */
+    if(!this.camera){ //Do nothing if no camera
+        return false;
+    }
+    var player = this;
+    var camera = player.camera;
+    
+    // Calculate the camera radius based current angle / scale
+    var radius = Math.sqrt((3 * camera.chase_scale) * (3 * camera.chase_scale) + (1 * camera.chase_scale) * (1 * camera.chase_scale));
+
+    // Check direction
+    // Change the scale if chase-cam is enabled, or scale the position if free-looking
+    if (deltaY > 0) { // scroll up
+        if (!camera.chaseCamEnabled) {
+            camera.position.multiplyScalar(1.1);
+        } else {
+            camera.chase_scale = Math.max(0.05, camera.chase_scale - 0.1);
+        }
+    } else if (deltaY < 0) { // scroll down
+        if (!camera.chaseCamEnabled) {
+            camera.position.multiplyScalar(0.9);
+        } else {
+            camera.chase_scale = Math.min(5, camera.chase_scale + 0.1);
+        }
+    }
+
+    // Calculate the new angle and new radius
+    var newAngle = camera.chase_angle,
+        newRadius = Math.sqrt((3 * camera.chase_scale) * (3 * camera.chase_scale) + (1 * camera.chase_scale) * (1 * camera.chase_scale)),
+        x = Math.cos(newAngle) * newRadius,
+        y = Math.sqrt(newRadius * newRadius - x * x);
+
+    // Invert y if angle is negative
+    y = newAngle > 0 ? y : -y;
+
+    // Cap x such that the camera cannot look past the player model
+    x = Math.max(x, 0.5);
+
+    // Update the camera position
+    camera.position.set(camera.position.x, x, y);
+    camera.position.add(camera.cameraOffset);     // Apply the camera offset
+    camera.lookAt(camera.LOOK_AT_RELATIVE); // Look at the player model (just above it!)
+    
+    //Ensure we don't try to scroll the bloody page!
+    event.stopPropagation();
+    event.preventDefault();
+};
+SuperMega.Player.prototype.broadcast_position = function(){
+    /**
+     * Returns the data this player needs to send back to the server
+     * 
+     * @return {x,y,z,angle_z}: The position and z-rotation
+     */
+    return {
+        "x" : this.position.x,
+        "y" : this.position.y,
+        "z" : this.position.z,
+        "zRotation" : this.rotation.z
+    }
+}
 SuperMega.Player.prototype.on_collision = function(level, callback){
     /**
      * Adds a collision listener to the player which will call the callback function
