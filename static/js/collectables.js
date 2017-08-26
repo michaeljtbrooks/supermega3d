@@ -143,6 +143,38 @@ var USE_PHYSIJS_FOR_PLAYER = false;
 //SuperMega Namespace
 window.SuperMega = window.SuperMega || {};
 
+
+//Name spaced constants:
+SuperMega.CollisionTypes = {
+    NOTHING: 0,
+    BALL: 1,
+    PLAYER: 2,
+    TREE: 4,
+    BODY: 8,	//Means a dead body
+    GROUND: 16
+};
+SuperMega.CollisionMasks = {
+    BALL:   SuperMega.CollisionTypes.PLAYER |
+    		SuperMega.CollisionTypes.TREE |
+    		SuperMega.CollisionTypes.GROUND,
+
+    PLAYER: SuperMega.CollisionTypes.BALL |
+    		SuperMega.CollisionTypes.BODY |
+    		SuperMega.CollisionTypes.TREE |
+    		SuperMega.CollisionTypes.GROUND,
+
+    TREE:   SuperMega.CollisionTypes.BALL |
+    		SuperMega.CollisionTypes.PLAYER, //Cannot walk into trees
+
+    BODY:   SuperMega.CollisionTypes.PLAYER |
+    		SuperMega.CollisionTypes.GROUND,
+
+    GROUND: SuperMega.CollisionTypes.BALL |
+    		SuperMega.CollisionTypes.BODY |
+    		SuperMega.CollisionTypes.PLAYER //Allowing ground to collide with player
+};
+
+
 //Our default colours in 0xHEX
 SuperMega.DEFAULT_COLOURS = {
     "trap" : 0x2222FF,
@@ -1748,6 +1780,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
         "shoot" : [1,2,3,4],
         "max_gradient" : [1.0,1.3,1.6,1.9],
     },
+    JUMP_BOOST_TIME: 0.20, //Time in seconds where you can depress space up to to boost jump speed
     MAX_RAY_LENGTH: 40.0, //Optimisation
     CAN_ACCELERATE_IN_AIR: phys.PLAYER_CAN_ACCELERATE_IN_AIR, //Says whether we can change dir with WSAD keys in air 
     
