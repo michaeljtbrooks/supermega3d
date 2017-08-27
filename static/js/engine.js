@@ -80,7 +80,8 @@ SuperMega.Engine.prototype = Object.assign( {}, {
     socket: {},       //Interface to our server
     camera: null,     //Convenience pointer to the camera
     controls: null,   //Input from our user
-    keys: [],         //Array for storing which keys are down
+    keys: {},         //Storing which keys are down
+    key_toggle_watchers: {}, //Storing which keys are disabled until next press (??deprecated)
     level: null,      //The currently active level
     player: null,     //Our local player (stays active across levels)
     renderer: null    //WebGL renderer
@@ -193,7 +194,7 @@ SuperMega.Engine.prototype.toggle_pointer_lock = function(e){
 		this.screen.overlays.blocker.hide(0);
 	}
 };
-SuperMega.Engine.prototype.on_window_resize(e){
+SuperMega.Engine.prototype.on_window_resize = function(e){
     /**
      * When the user changes their window size
      * 
@@ -212,8 +213,9 @@ SuperMega.Engine.prototype.on_window_resize(e){
     if (!this.camera.chaseCamEnabled) { //We only alter controls if free-lock is enabled
         this.controls.handleResize();
     }
-}
-SuperMega.Engine.on_key_down(e){
+};
+//------ Key Handling -----
+SuperMega.Engine.on_key_down = function(e){
     /**
      * Handles keyboard input
      * 
@@ -224,5 +226,86 @@ SuperMega.Engine.on_key_down(e){
         return false;
     }
     this.keys[event.keyCode] = true;
-}
+};
+SuperMega.Engine.on_key_up = function(e){
+	/**
+	 * Detects when a key is released
+	 * 
+	 * @param e: Javascript event
+	 */
+	
+	// Disable the key code
+    this.keys[event.keyCode] = false;
+
+    // Disable any holds that were active on the key, waiting for the key to be released
+    if (this.key_toggle_watchers[event.keyCode] != null) {
+        this.key_toggle_watchers[event.keyCode] = false;
+    }
+};
+SuperMega.Engine.is_wait_required = function(key){
+	/**
+	 * Detects if a key is ready to be pressed again
+	 * 
+	 * @param key: they keycode for the keyboard key we are asking about
+	 * @return: <Boolean>
+	 */
+	if(this.key_toggle_watchers[key]){
+		return this.key_toggle_watchers[key];
+	}
+	//No hold ever set. Thus must be false!
+	return false;
+};
+SuperMega.Engine.wait_required = function(key, timeout){
+	/**
+	 * Blocks a key, marking it not to be used until it is released
+	 * @param key: Key to block
+	 * @param timeout: Optional - How long to wait to automatically release the lock if the player doesn't get off the keyboard
+	 */
+	this.key_toggle_watchers[key] = true;
+	
+    // If a timeout was specified, automatically release the lock after the timeout
+    var self = this;
+	if (timeout != null && timeout > 0) {
+        setTimeout(function() { self.key_toggle_watchers[key] = false; }, timeout);
+    }
+};
+//----- Mouse Handling -----
+SuperMega.Engine.on_mouse_up = function(e){
+	/**
+	 * User releases the mouse button
+	 * 
+	 * @param e: Javascript event
+     */
+	
+    if(!this.screen.hasLock){ //We don't fire if no lock
+        //TODO: Allow player to un-escape out of the pause
+        return false;
+    }
+    
+    //Don't propagate
+    e.preventDefault();
+    
+    // Fire ball if player not dead
+    if (player.hp > 0) {
+        // Throw a ball!
+        this.player.throw_ball(this.socket,this.level); //Need to transmit the socket in!
+    }
+};
+SuperMega.Engine.on_mouse_move = function(e){
+	/**
+	 * Occurs when the player moves the mouse
+	 * Adapted on code obtained from Adam Vogel / @adambvogel (http://adamvogel.net)
+	 * 
+	 * @param e - DOM event
+	 */
+	if(!this.screen.hasLock || !this.player){ //Disregard if no pointer lock or no player
+        //TODO: Allow player to un-escape out of the pause
+        return false;
+    }
+	var position_for_broadcast = this.player.mouse_move(e);
+	//this.socket.broadcast_position(position_for_broadcast);
+};
+
+
+
 
