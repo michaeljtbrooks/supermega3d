@@ -42,6 +42,8 @@ SuperMega.Engine = function(){
      */
     this.screen = {}; //Our interface to our user
     this.socket = {}; //Our interface to the server
+    this.screen.renderer = {} //Our renderer (whatever that is?!)
+    this.play_mode = false; //Flag to see if we're in level play mode
     
     //Check environment:
     this.screen.havePointerLock = 'pointerLockElement' in document || 'mozPointerLockElement' in document || 'webkitPointerLockElement' in document;
@@ -64,31 +66,88 @@ SuperMega.Engine = function(){
     //Get our Level select:
     this.screen.level_select = $('#level-select');
     
-    
-    //Bind events to screen elements
-    if(this.screen.havePointerLock){
-	    document.addEventListener( 'pointerlockchange', this.pointerlockchange, false );
-	    document.addEventListener( 'mozpointerlockchange', this.pointerlockchange, false );
-	    document.addEventListener( 'webkitpointerlockchange', this.pointerlockchange, false );
-	
-	    document.addEventListener( 'pointerlockerror', this.pointerlockerror, false );
-	    document.addEventListener( 'mozpointerlockerror', this.pointerlockerror, false );
-	    document.addEventListener( 'webkitpointerlockerror', this.pointerlockerror, false );
-	    
-	    this.screen.overlays.instructions.on("click", this.toggle_pointer_lock); //The instruction screen will only take a click when it's shown!!
-    }else{ //Show pointer lock not supported error msg
-    	this.screen.overlays.instructions.html('Your browser doesn\'t seem to support Pointer Lock API - Try <a href="https://www.google.co.uk/chrome/browser/desktop/index.html" title="Get Google Chrome">Google Chrome</a>');
-    	this.screen.overlays.blocker.show(0);
-		this.screen.overlays.instructions.show(0);
-    }
 };
 SuperMega.Engine.prototype = Object.assign( {}, {
     constructor: SuperMega.Engine,
-    screen: {},       //Output to our user
+    //Object containers
+    screen: {
+                renderer: {},
+                overlays: {},
+                hud: {},
+                level_select: null,
+                hasLock: false
+            },       //Output to our user
     socket: {},       //Interface to our server
+    camera: null,     //Convenience pointer to the camera
     controls: null,   //Input from our user
+    keys: [],         //Array for storing which keys are down
     level: null,      //The currently active level
+    player: null,     //Our local player (stays active across levels)
+    renderer: null    //WebGL renderer
 });
+SuperMega.Engine.prototype.enter_play_mode = function(){
+    /**
+     * Activates the relevant events for playing the level, such as controls
+     * 
+     */
+    //Bind events to screen elements
+    //Pointer lock controls
+    if(this.screen.havePointerLock){
+        $(document).on( 'pointerlockchange', this.toggle_pointer_lock);
+        $(document).on( 'mozpointerlockchange', this.toggle_pointer_lock);
+        $(document).on( 'webkitpointerlockchange', this.toggle_pointer_lock);
+        
+        $(document).on( 'pointerlockerror', this.error_pointer_lock);
+        $(document).on( 'mozpointerlockerror', this.error_pointer_lock);
+        $(document).on( 'webkitpointerlockerror', this.error_pointer_lock);
+        
+        this.screen.overlays.instructions.on("click", this.toggle_pointer_lock); //The instruction screen will only take a click when it's shown!!
+    }else{ //Show pointer lock not supported error msg
+        this.screen.overlays.instructions.html('Your browser doesn\'t seem to support Pointer Lock API - Try <a href="https://www.google.co.uk/chrome/browser/desktop/index.html" title="Get Google Chrome">Google Chrome</a>');
+        this.screen.overlays.blocker.show(0);
+        this.screen.overlays.instructions.show(0);
+    }
+    // Gaming controls:
+    $(window).on( 'resize', this.on_window_resize);
+    $(window).on( 'keydown', this.on_key_down);
+    $(window).on( 'keyup', this.on_key_up);
+    $(document).on( 'mouseup', this.on_mouse_up);
+    $(document).on( 'mousemove', this.on_mouse_move);
+    $(document).on( 'mousewheel', this.on_mouse_scroll);
+    
+    //Set flag
+    this.play_mode = true;
+}
+SuperMega.Engine.prototype.exit_play_mode = function(){
+    /**
+     * Unbinds the level play events
+     */
+    //Pointer lock controls
+    if(this.screen.havePointerLock){
+        $(document).off( 'pointerlockchange', this.toggle_pointer_lock);
+        $(document).off( 'mozpointerlockchange', this.toggle_pointer_lock);
+        $(document).off( 'webkitpointerlockchange', this.toggle_pointer_lock);
+        
+        $(document).off( 'pointerlockerror', this.error_pointer_lock);
+        $(document).off( 'mozpointerlockerror', this.error_pointer_lock);
+        $(document).off( 'webkitpointerlockerror', this.error_pointer_lock);
+        
+        this.screen.overlays.instructions.off("click", this.toggle_pointer_lock); //The instruction screen will only take a click when it's shown!!
+    }else{ //Show pointer lock not supported error msg
+        this.screen.overlays.blocker.hide(0);
+        this.screen.overlays.instructions.hide(0);
+    }
+    // Gaming controls:
+    $(window).off( 'resize', this.on_window_resize);
+    $(window).off( 'keydown', this.on_key_down);
+    $(window).off( 'keyup', this.on_key_up);
+    $(document).off( 'mouseup', this.on_mouse_up);
+    $(document).off( 'mousemove', this.on_mouse_move);
+    $(document).off( 'mousewheel', this.on_mouse_scroll);
+    
+    //Set flag
+    this.play_mode = false;
+}
 SuperMega.Engine.prototype.is_pointer_lock_active = function(){
 	/**
 	 * Determines whether the pointerlock is active or not
@@ -98,8 +157,10 @@ SuperMega.Engine.prototype.is_pointer_lock_active = function(){
 	var element = document.body;
 	if ( document.pointerLockElement === element || document.mozPointerLockElement === element || document.webkitPointerLockElement === element ) {
 		//Pointer_lock is ON!
-		return true;
+	    this.screen.hasLock = true;
+	    return true;
 	}
+	this.screen.hasLock = false;
 	return false;
 };
 SuperMega.Engine.prototype.toggle_pointer_lock = function(e){
@@ -132,5 +193,36 @@ SuperMega.Engine.prototype.toggle_pointer_lock = function(e){
 		this.screen.overlays.blocker.hide(0);
 	}
 };
-
+SuperMega.Engine.prototype.on_window_resize(e){
+    /**
+     * When the user changes their window size
+     * 
+     * @param e: Javascript event
+     * 
+     */
+    var play_window = window;
+    var SCREEN_WIDTH = play_window.innerWidth;
+    var SCREEN_HEIGHT = play_window.innerHeight;
+    if(this.camera){ //Resize camera view
+        this.camera.resize(play_window);
+    }
+    
+    //Tweak renderer and controls
+    this.renderer.setSize( SCREEN_WIDTH, SCREEN_HEIGHT );
+    if (!this.camera.chaseCamEnabled) { //We only alter controls if free-lock is enabled
+        this.controls.handleResize();
+    }
+}
+SuperMega.Engine.on_key_down(e){
+    /**
+     * Handles keyboard input
+     * 
+     * @param e: Javascript event
+     */
+    if(!this.screen.hasLock){ //We don't move character if not locked
+        //TODO: Allow player to un-escape out of the pause
+        return false;
+    }
+    this.keys[event.keyCode] = true;
+}
 
