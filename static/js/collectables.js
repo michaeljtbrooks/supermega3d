@@ -498,9 +498,6 @@ SuperMega.Level = function( scene, level_number, options){
     //Default to no fog:
     this.scene.fog = new THREE.Fog( 0xFFFFFF, 1000, 2000);
     
-    //Create clock
-    this.clock = new THREE.Clock(); //Clock to watch our frames
-    
     //Generate background:
     this.create_background(options.background || {});
     
@@ -1782,7 +1779,10 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
     },
     JUMP_BOOST_TIME: 0.20, //Time in seconds where you can depress space up to to boost jump speed
     MAX_RAY_LENGTH: 40.0, //Optimisation
-    CAN_ACCELERATE_IN_AIR: phys.PLAYER_CAN_ACCELERATE_IN_AIR, //Says whether we can change dir with WSAD keys in air 
+    CAN_ACCELERATE_IN_AIR: phys.PLAYER_CAN_ACCELERATE_IN_AIR, //Says whether we can change dir with WSAD keys in air
+    BASE_SPEED: 8,
+    MOVE_SPEED: 8.0*25, //How fast this player moves ??obsolete
+    ANGLE_SPEED: 1.25,  //How fast you rotate
     
     //Initialise variables:
     body: false, //When the patient dies adds a dead body to the scene

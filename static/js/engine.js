@@ -66,10 +66,14 @@ SuperMega.Engine = function(){
     //Get our Level select:
     this.screen.level_select = $('#level-select');
     
+    //Init clock:
+    this.clock = new THREE.Clock(); //Clock to watch our frames
+    
 };
 SuperMega.Engine.prototype = Object.assign( {}, {
     constructor: SuperMega.Engine,
     //Object containers
+    scene: null, 	//The scene object, is passed down into level, then into player. Created up here!
     screen: {
                 renderer: {},
                 overlays: {},
@@ -79,6 +83,7 @@ SuperMega.Engine.prototype = Object.assign( {}, {
             },       //Output to our user
     socket: {},       //Interface to our server
     camera: null,     //Convenience pointer to the camera
+    clock: null,	  //Our clock object to watch frames (and calc delta)
     controls: null,   //Input from our user
     keys: {},         //Storing which keys are down
     key_toggle_watchers: {}, //Storing which keys are disabled until next press (??deprecated)
@@ -118,6 +123,10 @@ SuperMega.Engine.prototype.enter_play_mode = function(){
     
     //Set flag
     this.play_mode = true;
+    //Clock start is dealt with when pointerlock gets engaged
+    
+    //Set up scene handling items (we do this up at the Engine level so we can do cut-scenes and other cool animations)
+    //TODO: Scene creation etc
 }
 SuperMega.Engine.prototype.exit_play_mode = function(){
     /**
@@ -148,6 +157,7 @@ SuperMega.Engine.prototype.exit_play_mode = function(){
     
     //Set flag
     this.play_mode = false;
+    this.clock.stop();
 }
 SuperMega.Engine.prototype.is_pointer_lock_active = function(){
 	/**
@@ -184,12 +194,12 @@ SuperMega.Engine.prototype.toggle_pointer_lock = function(e){
 	//Now check the status and update our display accordingly
 	if(!this.is_pointer_lock_active){ //Lock is now off, show the instructions window
 		this.screen.hasLock = false;
-		this.level.clock.stop(); //Stop our rendering clock
+		this.clock.stop(); //Stop our rendering clock
 		this.screen.overlays.blocker.show(0);
 		this.screen.overlays.instructions.show(0);
 	}else{ //Lock is now on, hide instructions overlay
 		this.screen.hasLock = true;
-		this.level.clock.start(); //Start our rendering clock
+		this.clock.start(); //Start our rendering clock
 		this.screen.overlays.instructions.hide(0);
 		this.screen.overlays.blocker.hide(0);
 	}
@@ -215,7 +225,7 @@ SuperMega.Engine.prototype.on_window_resize = function(e){
     }
 };
 //------ Key Handling -----
-SuperMega.Engine.on_key_down = function(e){
+SuperMega.Engine.prototype.on_key_down = function(e){
     /**
      * Handles keyboard input
      * 
@@ -227,7 +237,7 @@ SuperMega.Engine.on_key_down = function(e){
     }
     this.keys[event.keyCode] = true;
 };
-SuperMega.Engine.on_key_up = function(e){
+SuperMega.Engine.prototype.on_key_up = function(e){
 	/**
 	 * Detects when a key is released
 	 * 
@@ -242,7 +252,7 @@ SuperMega.Engine.on_key_up = function(e){
         this.key_toggle_watchers[event.keyCode] = false;
     }
 };
-SuperMega.Engine.is_wait_required = function(key){
+SuperMega.Engine.prototype.is_wait_required = function(key){
 	/**
 	 * Detects if a key is ready to be pressed again
 	 * 
@@ -270,7 +280,7 @@ SuperMega.Engine.wait_required = function(key, timeout){
     }
 };
 //----- Mouse Handling -----
-SuperMega.Engine.on_mouse_up = function(e){
+SuperMega.Engine.prototype.on_mouse_up = function(e){
 	/**
 	 * User releases the mouse button
 	 * 
@@ -291,7 +301,7 @@ SuperMega.Engine.on_mouse_up = function(e){
         this.player.throw_ball(this.socket,this.level); //Need to transmit the socket in!
     }
 };
-SuperMega.Engine.on_mouse_move = function(e){
+SuperMega.Engine.prototype.on_mouse_move = function(e){
 	/**
 	 * Occurs when the player moves the mouse
 	 * Adapted on code obtained from Adam Vogel / @adambvogel (http://adamvogel.net)
@@ -302,10 +312,70 @@ SuperMega.Engine.on_mouse_move = function(e){
         //TODO: Allow player to un-escape out of the pause
         return false;
     }
-	var position_for_broadcast = this.player.mouse_move(e);
+	var position_for_broadcast = this.player.mouse_move(e); //Rotates the player!
 	//this.socket.broadcast_position(position_for_broadcast);
 };
-
-
+SuperMega.Engine.prototype.render = function(){
+	/**
+	 * Core play_mode engine loop!
+	 * 
+	 * Renders one frame of a level.
+	 * 
+	 * 
+	 */
+	if(!this.play_mode){ //Do nothing if not in play mode
+		return false;
+	}
+	
+	//Get delta!
+	var delta = this.clock.getDelta();
+	
+	//Run the physics if we are activated and level is loaded
+	var level = this.level;
+	if(level.loaded && (this.screen.hasLock || !this.play_continues_while_paused)){
+		if(!level.complete){
+            //Animate items
+            this.animate(delta);
+            // Simulate physics
+            this.scene.simulate(delta);
+        }else{ //Level finished!! Spin camera around
+            this.animate_level_complete(delta);
+        }
+	}
+	
+	//Render whatever happens (whether paused or not)
+	if(level.background_scene){ //Render level's background first
+		this.renderer.render(level.background_scene, level.background_camera);
+	}
+	this.renderer.render( scene, camera ); //Render main object action
+	requestAnimationFrame(this.render); //Go to next frame (loop)
+};
+SuperMega.Engine.prototype.animate_level_complete = function(delta){
+	/**
+	 * Runs the Level Complete sequence
+	 * (just the Camera spinning around the character and level end)
+	 * 
+	 *  @param delta: The time in ms since last render frame
+	 * 
+	 */
+	this.player.rotateOnAxis( new THREE.Vector3(0,0,1), this.ANGLE_SPEED*delta);
+    this.player.__dirtyRotation = true;
+    this.player.__dirtyPosition = true;
+};
+SuperMega.Engine.prototype.animate = function(delta){
+	/**
+	 * Animates in play mode
+	 * 
+	 * @TODO: Build this
+	 */
+};
+SuperMega.Engine.prototype.handle_user_input = function(){
+	/**
+	 * Handles key and mouse input from the user
+	 * 
+	 * 
+	 * @TODO: build this
+	 */
+};
 
 
