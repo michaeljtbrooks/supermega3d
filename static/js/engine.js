@@ -368,6 +368,11 @@ SuperMega.Engine.prototype.animate = function(delta){
 	 * 
 	 * @TODO: Build this
 	 */
+	var self = this;
+	if(!self.screen.hasLock){
+		return; //Bail out this animate loop if we're not locked
+	}
+	
 };
 SuperMega.Engine.prototype.handle_user_input = function(){
 	/**

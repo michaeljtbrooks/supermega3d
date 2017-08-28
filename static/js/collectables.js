@@ -531,7 +531,10 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
     nickname: "SuperMega", //The default player's name
     ball_counter: 0,  //The number of balls in the scene
     background_scene: null, //The background
-    complete: false //Whether the level has been completed or not
+    complete: false, //Whether the level has been completed or not
+    loaded: false	//Whether the level is loaded or not
+    
+    
 }); //JS inheritance hack part 2
 SuperMega.Level.prototype.create_background = function(options){
     /**
@@ -1029,6 +1032,9 @@ SuperMega.Level.prototype.build = function(data){
         //Fix start position and rotation:
         this.start_position = data.start_position || ZERO_VECTOR3;
         this.start_orientation = data.start_orientation || ZERO_EULER;
+        
+        //Flag level as loaded:
+        this.loaded = true;
 };
 SuperMega.Level.prototype.tear_down = function(){
     /*
@@ -1037,6 +1043,7 @@ SuperMega.Level.prototype.tear_down = function(){
      * Calls scene.remove, thus freeing memory
      */
     var self = this;
+    this.loaded = false;
     var object_cats = ["lighting","collidables","interactables","terrain","liquid_terrain","debris","players"];
     $.each(object_cats, function(index,object_cat){ //Iterate the categories
         var category_items = self[object_cat].slice(); //Shallow-copy array so manipulating it in the loop won't fark it
@@ -4511,8 +4518,15 @@ SuperMega.Platform.prototype = Object.assign( Object.create(SuperMega.Interactab
          */
         level = level || this.ops.level || null;
         
-        //Injure the player:
-        if(this.inflicts_damage>0){
+        try{
+        	var level_is_loaded = level.loaded
+        }catch(err){ //Happens if level not passed in!
+        	console.log("Platform.touched() missing level param");
+        	var level_is_loaded = false;
+        }
+        
+        //Injure the player (if the level is loaded!):
+        if(this.inflicts_damage>0 && level_is_loaded){
             player.injure(this.inflicts_damage*delta);
         }
     }
