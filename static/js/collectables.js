@@ -503,8 +503,7 @@ SuperMega.Level = function( scene, level_number, options){
     
     //Let there be light:- This will need to be moved if we want to change lighting between levels
     this.build_lighting(options.day_night || false);
-   
-}
+};
 SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype), {
     constructor: SuperMega.Level,
     
@@ -532,7 +531,8 @@ SuperMega.Level.prototype = Object.assign( Object.create(Physijs.Scene.prototype
     ball_counter: 0,  //The number of balls in the scene
     background_scene: null, //The background
     complete: false, //Whether the level has been completed or not
-    loaded: false	//Whether the level is loaded or not
+    loaded: false,	//Whether the level is loaded or not
+    sky_underlay: null  //Turns day sky into night sky for levels with a day/night cycle
     
     
 }); //JS inheritance hack part 2
@@ -751,6 +751,8 @@ SuperMega.Level.prototype.build_lighting = function(day_night){
      * Creates the lighting for the level
      * 
      * @param day_night: <Boolean> Whether day_night cycles or not
+     * 
+     * @todo: Pass the sky_underlay in from Engine rather than getting it from here
      */
     //Resolve inputs:
     if(typeof day_night == "undefined"){
@@ -758,6 +760,8 @@ SuperMega.Level.prototype.build_lighting = function(day_night){
         this.day_night = day_night; //Store as object var so we can animate lighting rotation
     }
     
+    //Ensure we know about the sky underlay:
+    this.sky_underlay = $('#pagewrapper'); //TODO: get Engine to tell level about this?
     
     //Background general ambient light
     ambient = new THREE.AmbientLight( 0x909090, 0.6 );
@@ -799,6 +803,8 @@ SuperMega.Level.prototype.build_lighting = function(day_night){
     
     // Add the lights to the scene
     this.add( lightRig, "lighting", "rig" );
+    this.lighting['light'] = light; //Already in scene, so just track with a dumb pointer
+    this.lighting['light2'] = light2; //Ditto
     
     //Add the moon (if required)
     if(this.day_night){
@@ -1098,6 +1104,39 @@ SuperMega.Level.prototype.animate = function(delta){
                 //console.log(err);
             }
         });
+        
+        
+        //Now animate the light:
+        if(self.day_night){
+            var light = self.lighting['light']; //Retrieve the right light
+            var light2 = self.lighting['light2'];
+            var lightRig = self.lighting['rig'];
+            
+            // Update light matricies
+            light.updateMatrixWorld();
+            light.target.updateMatrixWorld();
+            light2.updateMatrixWorld();
+            light2.target.updateMatrixWorld();
+
+            // Rotate the lighting rig
+            lightRig.rotation.y -= .001; // time of day
+            
+            // Vary the lighting and shadow intensity based on time of day (read: rotation)
+            light.intensity = Math.abs(lightRig.rotation.y / Math.PI % 2) < 1 ? Math.min(1.3, Math.sin(Math.abs(lightRig.rotation.y / Math.PI % 2) * Math.PI)*2) : 0
+            light2.intensity = Math.abs(lightRig.rotation.y / Math.PI % 2) < 1 ? Math.min(1.3, Math.sin(Math.abs(lightRig.rotation.y / Math.PI % 2) * Math.PI)*2) : 0
+            light.shadowDarkness = Math.abs(lightRig.rotation.y / Math.PI % 2) < 1 ? Math.min(0.25, Math.sin(Math.abs(lightRig.rotation.y / Math.PI % 2) * Math.PI)/2) : 0
+
+            // If the light rotation has reached one of the edges, toggle the sky underlay on/off
+            // The underlay has css transition, so it looks like the sun fades. YOU LIKE?
+            var sky_underlay = self.sky_underlay; //Ideally inherit this from engine??
+            if(sky_underlay){
+                if (Math.abs(lightRig.rotation.y / Math.PI % 2) < 1) {
+                    sky_underlay.css('opacity', 0);
+                } else {
+                    sky_underlay.css('opacity', 1);
+                }
+            }
+        }
 };
 SuperMega.Level.prototype.add_ball = function(position, force, restitution, playerId, color, ballId) {
         /**

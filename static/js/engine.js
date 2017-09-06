@@ -36,13 +36,129 @@
 //SuperMega Namespace
 window.SuperMega = window.SuperMega || {};
 
+
+var KEYCODE = {
+    /**
+    * @author Adam Vogel - @adambvogel (http://adamvogel.net)
+    */
+    'BACKSPACE' : 8,
+
+    'ENTER' : 13,
+    'SHIFT' : 16,
+    'CTRL' : 17,
+    'ALT' : 18,
+    'PAUSE_BREAK' : 19,
+    'CAPS_LOCK' : 20,
+    'ESCAPE' : 27,
+    'SPACE' : 32,
+    'PAGE_UP' : 33,
+    'PAGE_DOWN' : 34,
+    'END' : 35,
+    'HOME' : 36,
+
+    'LEFT_ARROW' : 37,
+    'UP_ARROW' : 38,
+    'RIGHT_ARROW' : 39,
+    'DOWN_ARROW' : 40,
+
+    'INSERT' : 45,
+    'DELETE' : 46,
+
+    '0' : 48,
+    '1' : 49,
+    '2' : 50,
+    '3' : 51,
+    '4' : 52,
+    '5' : 53,
+    '6' : 54,
+    '7' : 55,
+    '8' : 56,
+    '9' : 57,
+    'PLUS' : 59,
+    'MINUS' : 61,
+
+    'A' : 65,
+    'B' : 66,
+    'C' : 67,
+    'D' : 68,
+    'E' : 69,
+    'F' : 70,
+    'G' : 71,
+    'H' : 72,
+    'I' : 73,
+    'J' : 74,
+    'K' : 75,
+    'L' : 76,
+    'M' : 77,
+    'N' : 78,
+    'O' : 79,
+    'P' : 80,
+    'Q' : 81,
+    'R' : 82,
+    'S' : 83,
+    'T' : 84,
+    'U' : 85,
+    'V' : 86,
+    'W' : 87,
+    'X' : 88,
+    'Y' : 89,
+    'Z' : 90,
+
+    'WINDOWS_KEY' : 91,
+    'SELECT_KEY' : 93,
+
+    'NUMPAD_0' : 96,
+    'NUMPAD_1' : 97,
+    'NUMPAD_2' : 98,
+    'NUMPAD_3' : 99,
+    'NUMPAD_4' : 100,
+    'NUMPAD_5' : 101,
+    'NUMPAD_6' : 102,
+    'NUMPAD_7' : 103,
+    'NUMPAD_8' : 104,
+    'NUMPAD_9' : 105,
+    'NUMPAD_MULTIPLY' : 106,
+    'NUMPAD_ADD' : 107,
+    'NUMPAD_SUBTRACT' : 109,
+    'NUMPAD_DECIMAL_POINT' : 110,
+    'NUMPAD_DIVIDE' : 111,
+
+    'F1' : 112,
+    'F2' : 113,
+    'F3' : 114,
+    'F4' : 115,
+    'F5' : 116,
+    'F6' : 117,
+    'F7' : 118,
+    'F8' : 119,
+    'F9' : 120,
+    'F10' : 121,
+    'F11' : 122,
+    'F12' : 123,
+
+    'NUM_LOCK' : 144,
+    'SCROLL_LOCK' : 145,
+    'SEMI_COLON' : 186,
+    'EQUAL_SIGN' : 187,
+    'COMMA' : 188,
+    'DASH' : 189,
+    'PERIOD' : 190,
+    'FORWARD_SLASH' : 191,
+    'GRAVE_ACCENT' : 192,
+    'OPEN_BRACKET' : 219,
+    'BACKSLASH' : 220,
+    'CLOSE_BRACKET' : 221,
+    'SINGLE_QUOTE' : 222
+}; //keycode enum
+
+
 SuperMega.Engine = function(){
     /**
      * Our Engine
      */
     this.screen = {}; //Our interface to our user
     this.socket = {}; //Our interface to the server
-    this.screen.renderer = {} //Our renderer (whatever that is?!)
+    this.screen.renderer = {}; //Our renderer (whatever that is?!)
     this.play_mode = false; //Flag to see if we're in level play mode
     
     //Check environment:
@@ -89,7 +205,8 @@ SuperMega.Engine.prototype = Object.assign( {}, {
     key_toggle_watchers: {}, //Storing which keys are disabled until next press (??deprecated)
     level: null,      //The currently active level
     player: null,     //Our local player (stays active across levels)
-    renderer: null    //WebGL renderer
+    renderer: null,    //WebGL renderer
+    KEYCODE : KEYCODE   //Provides keycodes inside object
 });
 SuperMega.Engine.prototype.enter_play_mode = function(){
     /**
@@ -248,7 +365,7 @@ SuperMega.Engine.prototype.on_key_up = function(e){
     this.keys[event.keyCode] = false;
 
     // Disable any holds that were active on the key, waiting for the key to be released
-    if (this.key_toggle_watchers[event.keyCode] != null) {
+    if (this.key_toggle_watchers[event.keyCode] !== null) {
         this.key_toggle_watchers[event.keyCode] = false;
     }
 };
@@ -275,10 +392,46 @@ SuperMega.Engine.wait_required = function(key, timeout){
 	
     // If a timeout was specified, automatically release the lock after the timeout
     var self = this;
-	if (timeout != null && timeout > 0) {
+	if (timeout !== null && timeout > 0) {
         setTimeout(function() { self.key_toggle_watchers[key] = false; }, timeout);
     }
 };
+SuperMega.Engine.is_key_down = function(args){
+    /**
+     * Sees if a key is depressed
+     * 
+     * @param args: {int} The keycode(s) we're checking, can check a whole list if you'd like
+     * @returns: {Boolean} if key is down or not
+     */
+    //Grab the key definitions
+    var keys = this.keys; //Our var to watch the keys
+    // If just one key is to be checked
+    if (typeof args === 'number') { 
+        // 'args' is a single key, eg. KEYCODE.A : 65
+        if (keys[args] !== null) {
+            // Return whether the given key is down
+            return keys[args];
+        } else {
+            return false;
+        }
+    } else if ( (typeof args === 'object' ) && args.isArray ) {
+        // 'args' is a an array of keys
+        // Verify all are down or fail
+        for (var i=0; i<args.length; i++) {
+            if ((keys[args[i]] !== null) && (keys[args[i]])) {
+                // do nothing, keep looping
+            } else {
+                // if any of the keys are null or not down
+                return false;
+            }
+        }
+        // all keys are down
+        return true;  
+    } else {
+        // Nothing to do
+        return false;
+    }
+}
 //----- Mouse Handling -----
 SuperMega.Engine.prototype.on_mouse_up = function(e){
 	/**
@@ -363,24 +516,63 @@ SuperMega.Engine.prototype.animate_level_complete = function(delta){
     this.player.__dirtyPosition = true;
 };
 SuperMega.Engine.prototype.animate = function(delta){
-	/**
-	 * Animates in play mode
-	 * 
-	 * @TODO: Build this
-	 */
-	var self = this;
-	if(!self.screen.hasLock){
-		return; //Bail out this animate loop if we're not locked
-	}
-	
+    /**
+     * Animates in play mode
+     * 
+     * @TODO: Build this
+     */
+    var self = this;
+    if(!self.screen.hasLock){
+            return; //Bail out this animate loop if we're not locked
+    }
+    
+    //Handle user input
+    this.user_input_to_player_movement(delta);
+    
+    //Animate level contents (ensures moving platforms move etc)
+    this.level.animate(delta); //Also animates the day/night cycle in level
+    
+    
 };
-SuperMega.Engine.prototype.handle_user_input = function(){
+SuperMega.Engine.prototype.user_input_to_player_movement = function(delta){
 	/**
-	 * Handles key and mouse input from the user
+	 * Moves player based upon the inputs from the user
+	 * Should only be called in play mode
 	 * 
-	 * 
+         * @param delta: {float} Time since last frame
+         * 
 	 * @TODO: build this
 	 */
+    //Init
+    var self = this;
+    var player = this.player;
+    var level = this.level;
+    var socket = this.socket;
+    
+    //Deal with DEAD situation:
+    if(this.player.hp <= 0){
+        //You're dead:
+        if (this.is_key_down(KEYCODE.ENTER)) {
+            // Don't accept another ENTER keystroke until the key has been released
+            if (!this.is_wait_required(KEYCODE.ENTER)) {
+
+                // Block the ENTER key
+                this.wait_required(KEYCODE.ENTER);
+
+                // Tell the server the player wants to respawn
+                player.respawn(level);
+                level.respawn(); //Rebuilds life-based collectables
+                socket.emit('respawn');
+
+                // Remove the dead overlay
+                this.screen.deadScreen.hide();
+            }
+        }
+    }
+    
+    
+    //Set movement flags based upon keys that are down
+    //##HERE##
 };
 
 
