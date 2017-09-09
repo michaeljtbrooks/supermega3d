@@ -33,6 +33,9 @@
  *  NB: The WebGL is a dynamically added Canvas element which sits underneath all the overlay screens!
  */
 
+//Global flags:
+var DEBUG = true;
+
 //SuperMega Namespace
 window.SuperMega = window.SuperMega || {};
 
@@ -523,7 +526,7 @@ SuperMega.Engine.prototype.animate = function(delta){
      */
     var self = this;
     if(!self.screen.hasLock){
-            return; //Bail out this animate loop if we're not locked
+        return; //Bail out this animate loop if we're not locked
     }
     
     //Handle user input
@@ -566,13 +569,136 @@ SuperMega.Engine.prototype.user_input_to_player_movement = function(delta){
 
                 // Remove the dead overlay
                 this.screen.deadScreen.hide();
+                //Roll on to processing the level as usual
+                
+            } else {
+                return false; //Break out of further keypress listening
             }
+        } else {
+            return false; //Dead, so can't do any moving!
         }
     }
     
-    
     //Set movement flags based upon keys that are down
-    //##HERE##
+    var isKeyDown = self.is_key_down; //Local alias for our keypress detection
+    var mu = 0.5; //default friction
+    var traction = 1; //Default traction
+    
+    // Frame flags and speeds based on time delta
+    var playerMoved = false;
+    var playerSpeed = isKeyDown(KEYCODE.SHIFT) ? player.BASE_SPEED * 2 * delta : player.BASE_SPEED * delta;
+    var playerAngleSpeed = Math.PI / 2 * (isKeyDown(KEYCODE.SHIFT) ? 2*player.ANGLE_SPEED : player.ANGLE_SPEED) * delta;
+    
+    //Process existing velocity:
+    mu = player.move_according_to_velocity2(delta, level); //Returns the mu friction coeff of the platform you are standing on
+    if(mu>0.5 || mu < 0.01){ //Keep traction sensible! NB traction = mu*2, thus mu of 0.5 or more gives full traction
+        traction = 1;
+    } else { 
+        traction = mu*2;
+    }
+    playerMoved = player.hasMoved; //Update our movement detection flag
+    
+    //Detect new intention to move:
+    // Move forward
+    if ((player.CAN_ACCELERATE_IN_AIR || player.standing) &&
+            (
+                (
+                    isKeyDown(KEYCODE.W) && !isKeyDown(KEYCODE.S)) || (isKeyDown(KEYCODE.UP_ARROW) && 
+                    !isKeyDown(KEYCODE.DOWN_ARROW)
+                )
+            ) // FIXME: This should do vertical rotation (mouse replacement)
+       ){
+        //playerMoved = moveIfInBounds(0, -playerSpeed,0) || playerMoved;
+        player.velocity.y -= player.state("acceleration") * delta * traction; //v = u + at
+    }
+    // Move backward
+    if (    
+            (player.CAN_ACCELERATE_IN_AIR || player.standing) &&
+            ((isKeyDown(KEYCODE.S) && !isKeyDown(KEYCODE.W)) || (isKeyDown(KEYCODE.DOWN_ARROW) && !isKeyDown(KEYCODE.UP_ARROW)))
+       ) {
+        //playerMoved = moveIfInBounds(0, playerSpeed,0) || playerMoved;
+        player.velocity.y += player.state("acceleration") * delta * traction;
+    }
+    // Strafe LEFT (WSAD A)
+    if ((player.CAN_ACCELERATE_IN_AIR || player.standing) && (isKeyDown(KEYCODE.A) && !isKeyDown(KEYCODE.D))) {
+        player.velocity.x += player.state("acceleration") * 0.7 * delta * traction; //Strafing is slower than running
+    }
+    // Strafe RIGHT (WSAD D)
+    if ((player.CAN_ACCELERATE_IN_AIR || player.standing) && (isKeyDown(KEYCODE.D) && !isKeyDown(KEYCODE.A))){
+        player.velocity.x -= player.state("acceleration") * 0.7 * delta * traction;
+    }
+    // Rotate left
+    if (isKeyDown(KEYCODE.LEFT_ARROW) && !isKeyDown(KEYCODE.RIGHT_ARROW)) {
+        player.rotateOnAxis( new THREE.Vector3(0,0,1), playerAngleSpeed);
+        player.__dirtyRotation = true;
+        player.__dirtyPosition = true;
+        playerMoved = true;
+    }
+    // Rotate right
+    if (isKeyDown(KEYCODE.RIGHT_ARROW) && !isKeyDown(KEYCODE.LEFT_ARROW)) {
+        player.rotateOnAxis( new THREE.Vector3(0,0,1), -playerAngleSpeed);
+        player.__dirtyRotation = true;
+        player.__dirtyPosition = true;
+        playerMoved = true;
+    }
+    
+    //Cap out our max velocity relative to the platform we're standing on (NB: doesn't affect standing_on_velocity!!
+    if(player.velocity.x > player.state("top_speed")){player.velocity.x = player.state("top_speed");}
+    if(player.velocity.x < -player.state("top_speed")){player.velocity.x = -player.state("top_speed");}
+    if(player.velocity.y > player.state("top_speed")){player.velocity.y = player.state("top_speed");}
+    if(player.velocity.y < -player.state("top_speed")){player.velocity.y = -player.state("top_speed");}
+    
+    //Jump! I've used my own implementation of keylock. We could switch to the self.is_wait_required(), but this works ok so leave it
+    if (isKeyDown(KEYCODE.SPACE)){ //Can only jump if not falling or already jumping
+        if((player.velocity.z < 0.5) && (player.velocity.z > -0.5) && !player.isJumping && player.jump_keydown_continuously===false){ //You can only launch off 
+            player.isJumping = true;
+            player.jump_keydown_continuously = JUMP_BOOST_TIME; //Max duration of keypress in seconds
+            player.velocity.z = 0.10*POWER_STATES.jump[player.power_state];
+            console.log("JUMP!");
+            console.log(player);
+        }
+        if(player.jump_keydown_continuously>0){ //Increase the jump height the longer you press that key for
+            var z_time_factor = delta;
+            if(z_time_factor > player.jump_keydown_continuously){
+                z_time_factor = player.jump_keydown_continuously;
+            }
+            player.velocity.z = player.velocity.z + (z_time_factor/JUMP_BOOST_TIME)*0.80*POWER_STATES.jump[player.power_state]; //Increment jump by up to 20% if key held by the 0.15s
+            player.jump_keydown_continuously -= z_time_factor;
+        }
+    }
+    if(!isKeyDown(KEYCODE.SPACE)){
+        //Means the jump key has been released. Again, we could use is_wait_required(), but this works ok for now
+        player.jump_keydown_continuously = false; //Turn this off
+    }
+    
+    
+    //Deal with special DEBUG cheats:
+    if(DEBUG){
+        if(isKeyDown(KEYCODE['0'])){ //Test if position moves player
+            var start_pos = level.start_position || new THREE.Vector3(0,0,60);
+        	player.position.set(start_pos.x, start_pos.y, start_pos.z);
+        	player.rotation.setFromVector3(level.start_orientation || new THREE.Euler(0,0,0));
+            player.standing_on_velocity = new THREE.Vector3(0,0,0);
+        }
+        if(isKeyDown(KEYCODE['9'])){ //Boost up
+            player.position.z = 80;
+            player.velocity.z = 0;
+            player.standing_on_velocity = new THREE.Vector3(0,0,0);
+        }
+        if(isKeyDown(KEYCODE['1'])){ //Artificial power up
+            player.setPower(0);
+        }
+        if(isKeyDown(KEYCODE['2'])){ //Artificial power up
+            player.setPower(1);
+        }
+        if(isKeyDown(KEYCODE['3'])){ //Artificial power up
+            player.setPower(2);
+        }
+        if(isKeyDown(KEYCODE['4'])){ //Artificial power up
+            player.setPower(3);
+        }
+    }
+    
 };
 
 
