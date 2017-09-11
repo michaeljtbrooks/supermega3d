@@ -1841,6 +1841,7 @@ SuperMega.Player.prototype = Object.assign( Object.create(Physijs.BoxMesh.protot
     standing_on_velocity: null, //The velocity of the platform you are standing on
     mu: 0.5, //The friction of the surface you are standing on
     camera: null,   //Where we rig the camera to (if the local player)
+    last_broadcast_position: null, //Used to work out whether to update the server with our position.
     
     
     //Ray storers
@@ -1928,7 +1929,7 @@ SuperMega.Player.prototype.mouse_move = function(e){
     
     //You should broadcast the new position of the player!!
     return player.get_broadcast_position();
-}
+};
 SuperMega.Player.prototype.mouse_scroll = function(event, delta, deltaX, deltaY){
     /**
      * Updates the camera's position so it is zooming in or out.
@@ -1988,19 +1989,48 @@ SuperMega.Player.prototype.mouse_scroll = function(event, delta, deltaX, deltaY)
     event.stopPropagation();
     event.preventDefault();
 };
-SuperMega.Player.prototype.broadcast_position = function(){
+SuperMega.Player.prototype.get_broadcast_position = function(){
     /**
      * Returns the data this player needs to send back to the server
      * 
      * @return {x,y,z,angle_z}: The position and z-rotation
      */
-    return {
+    var pos = {
         "x" : this.position.x,
         "y" : this.position.y,
         "z" : this.position.z,
         "zRotation" : this.rotation.z
+    };
+    return pos;
+};
+SuperMega.Player.prototype.broadcast_position = function(socket, pos){
+    /**
+     * Given a socket, this item will tell the socket where they have moved to
+     * 
+     * @param {websocket} socket
+     * @param {pos} pos: A pre-computed position if one exists.
+     * @returns pos = {
+     *      "x" : this.position.x,
+     *      "y" : this.position.y,
+     *      "z" : this.position.z,
+     *      "zRotation" : this.rotation.z
+     *  };
+     */
+    //Get our position in a broadcastable JSON format
+    if(!pos){
+        pos = this.get_broadcast_position();
     }
-}
+    var last_broadcast_position = this['last_broadcast_position'] || null; //Lazy way of avoiding AttributeError
+    if(pos !== last_broadcast_position){
+        if(socket){
+            // Send location to the server
+            socket.emit('move', pos);
+            // Update last broadcast position
+            this.last_broadcast_position = pos;
+        }
+    }
+    return pos;
+};
 SuperMega.Player.prototype.on_collision = function(level, callback){
     /**
      * Adds a collision listener to the player which will call the callback function

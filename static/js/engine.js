@@ -469,27 +469,27 @@ SuperMega.Engine.prototype.on_mouse_move = function(e){
         return false;
     }
 	var position_for_broadcast = this.player.mouse_move(e); //Rotates the player!
-	//this.socket.broadcast_position(position_for_broadcast);
+	this.player.broadcast_position(this.socket, position_for_broadcast);
 };
 SuperMega.Engine.prototype.render = function(){
-	/**
-	 * Core play_mode engine loop!
-	 * 
-	 * Renders one frame of a level.
-	 * 
-	 * 
-	 */
-	if(!this.play_mode){ //Do nothing if not in play mode
-		return false;
-	}
-	
-	//Get delta!
-	var delta = this.clock.getDelta();
-	
-	//Run the physics if we are activated and level is loaded
-	var level = this.level;
-	if(level.loaded && (this.screen.hasLock || !this.play_continues_while_paused)){
-		if(!level.complete){
+    /**
+     * Core play_mode engine loop!
+     * 
+     * Renders one frame of a level.
+     * 
+     * 
+     */
+    if(!this.play_mode){ //Do nothing if not in play mode
+        return false;
+    }
+
+    //Get delta!
+    var delta = this.clock.getDelta();
+
+    //Run the physics if we are activated and level is loaded
+    var level = this.level;
+    if(level.loaded && (this.screen.hasLock || !this.play_continues_while_paused)){
+        if(!level.complete){
             //Animate items
             this.animate(delta);
             // Simulate physics
@@ -497,24 +497,26 @@ SuperMega.Engine.prototype.render = function(){
         }else{ //Level finished!! Spin camera around
             this.animate_level_complete(delta);
         }
-	}
+    }
+
+    //Render whatever happens (whether paused or not)
+    if(level.background_scene){ //Render level's background first
+        this.renderer.render(level.background_scene, level.background_camera);
+    }
+    this.renderer.render( scene, camera ); //Render main object action
 	
-	//Render whatever happens (whether paused or not)
-	if(level.background_scene){ //Render level's background first
-		this.renderer.render(level.background_scene, level.background_camera);
-	}
-	this.renderer.render( scene, camera ); //Render main object action
-	requestAnimationFrame(this.render); //Go to next frame (loop)
+    //Next frame!
+    requestAnimationFrame(this.render); //Go to next frame (loop)
 };
 SuperMega.Engine.prototype.animate_level_complete = function(delta){
-	/**
-	 * Runs the Level Complete sequence
-	 * (just the Camera spinning around the character and level end)
-	 * 
-	 *  @param delta: The time in ms since last render frame
-	 * 
-	 */
-	this.player.rotateOnAxis( new THREE.Vector3(0,0,1), this.ANGLE_SPEED*delta);
+    /**
+     * Runs the Level Complete sequence
+     * (just the Camera spinning around the character and level end)
+     * 
+     *  @param delta: The time in ms since last render frame
+     * 
+     */
+    this.player.rotateOnAxis( new THREE.Vector3(0,0,1), this.ANGLE_SPEED*delta);
     this.player.__dirtyRotation = true;
     this.player.__dirtyPosition = true;
 };
@@ -699,6 +701,65 @@ SuperMega.Engine.prototype.user_input_to_player_movement = function(delta){
         }
     }
     
+    // We do not bother calling "this.broadcast_position" even if the player has moved,
+    // instead this is done by the setInterval(this.broadcast_position), which takes
+    // advantage of threading in the browser.
 };
+SuperMega.Engine.prototype.broadcast_position = function(player){
+    /**
+     * Broadcasts the position of the supplied player to the rest of the world
+     * Should be triggered by a setInterval(this.broadcast_position, 25) in level set up.
+     * Player object can work out for itself if it has moved since last update.
+     * 
+     * @keyword player: {SuperMega.Player} The player who needs to tell us their position
+     * 
+     * @return {pos dict}
+     */
+    player = player || this.player; //Default to local player
+    var player_pos = player.broadcast_position(this.socket); //The player can broadcast itself using a socket
+    return player_pos;
+};
+SuperMega.Engine.prototype.run = function(){
+    /**
+     * Main loop.
+     * 
+     *      Determines whether you are in play mode, or in level select mode, runs that
+     *      
+     * @TODO: Build the methods inside this
+     */
+    
+    this.initialise(); //Sets up Player object, socket, renderer, camera
+    
+    var chosen_level_number = this.select_level(); //User choses a level (with mouse or cursor). //BLOCKING... how best to do this??
+    
+    
+    
+};
+SuperMega.Engine.prototype.select_level = function(level_id){
+    /**
+     * Asks the server to transmit the level details so we can load it.
+     * 
+     * @TODO: add in user credentisl checking
+     */
+    
+    //Once we have user credential based level building
+    //var level_data = this.request_level(level_id, user_credentials)
+    
+    //While we have no user credential based checking (for free beta)
+    var level_data = level_contents[level_id];
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
